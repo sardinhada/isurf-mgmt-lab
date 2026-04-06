@@ -21,3 +21,6 @@ Run project in DEVELOPMENT mode: `npm run tauri dev`
 
 ## Order of works
 - [ordem de trabalhos](ordem-de-trabalhos.drawio.png)
+
+## FOR LINUX DEVELOPMENT (WTF)
+GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 npm run tauri dev

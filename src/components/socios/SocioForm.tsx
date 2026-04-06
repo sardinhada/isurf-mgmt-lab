@@ -14,6 +14,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import { MonthlyPaymentsEditor } from './MonthlyPaymentsEditor';
 import type { SocioFormValues, SocioStatus } from '../../types/socio';
 
 const today = () => new Date().toISOString().split('T')[0];
@@ -22,28 +23,28 @@ const nextYear = () => {
   d.setFullYear(d.getFullYear() + 1);
   return d.toISOString().split('T')[0];
 };
-const nextMonth = () => {
-  const d = new Date();
-  d.setMonth(d.getMonth() + 1);
-  return d.toISOString().split('T')[0];
-};
-
 const DEFAULT_VALUES: SocioFormValues = {
   name: '',
   email: '',
   phone: '',
   address: '',
-  nss: '',
+  observacoes: '',
+  ncc: '',
+  nif: '',
+  birth_date: '',
+  postal_code: '',
   joined_at: today(),
   status: 'active',
   paid_until: nextYear(),
   board_store: false,
-  store_paid_until: nextMonth(),
+  utilization: false,
+  surf_lessons: false,
 };
 
 type FormErrors = Partial<Record<keyof SocioFormValues, string>>;
 
 interface Props {
+  partnerId?: number; // provided when editing — enables monthly payment editors
   initialValues?: Partial<SocioFormValues>;
   onSubmit: (values: SocioFormValues) => void;
   onCancel: () => void;
@@ -52,6 +53,7 @@ interface Props {
 }
 
 export const SocioForm = ({
+  partnerId,
   initialValues,
   onSubmit,
   onCancel,
@@ -76,7 +78,6 @@ export const SocioForm = ({
     else if (!/\S+@\S+\.\S+/.test(values.email)) e.email = 'Email inválido';
     if (!values.joined_at) e.joined_at = 'Obrigatório';
     if (!values.paid_until) e.paid_until = 'Obrigatório';
-    if (values.board_store && !values.store_paid_until) e.store_paid_until = 'Obrigatório';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -127,22 +128,62 @@ export const SocioForm = ({
               sx={{ flex: 1 }}
             />
             <TextField
-              label="NSS"
+              label="Data de Nascimento"
+              type="date"
               size="small"
-              value={values.nss}
-              onChange={(e) => set('nss', e.target.value)}
+              value={values.birth_date}
+              onChange={(e) => set('birth_date', e.target.value)}
+              disabled={disabled}
+              slotProps={{ inputLabel: { shrink: true } }}
+              sx={{ flex: 1 }}
+            />
+          </Stack>
+
+          <Stack direction="row" spacing={2}>
+            <TextField
+              label="NCC"
+              size="small"
+              value={values.ncc}
+              onChange={(e) => set('ncc', e.target.value)}
+              disabled={disabled}
+              sx={{ flex: 1 }}
+            />
+            <TextField
+              label="NIF"
+              size="small"
+              value={values.nif}
+              onChange={(e) => set('nif', e.target.value)}
+              disabled={disabled}
+              sx={{ flex: 1 }}
+            />
+          </Stack>
+
+          <Stack direction="row" spacing={2}>
+            <TextField
+              label="Endereço"
+              size="small"
+              value={values.address}
+              onChange={(e) => set('address', e.target.value)}
+              disabled={disabled}
+              sx={{ flex: 1 }}
+            />
+            <TextField
+              label="Código Postal"
+              size="small"
+              value={values.postal_code}
+              onChange={(e) => set('postal_code', e.target.value)}
               disabled={disabled}
               sx={{ flex: 1 }}
             />
           </Stack>
 
           <TextField
-            label="Endereço"
+            label="Observações"
             size="small"
             multiline
-            rows={2}
-            value={values.address}
-            onChange={(e) => set('address', e.target.value)}
+            rows={3}
+            value={values.observacoes}
+            onChange={(e) => set('observacoes', e.target.value)}
             disabled={disabled}
           />
         </Stack>
@@ -213,20 +254,43 @@ export const SocioForm = ({
             label="Guardaria de Prancha"
           />
 
-          {values.board_store && (
-            <TextField
-              label="Guardaria Paga Até"
-              required
-              type="date"
-              size="small"
-              value={values.store_paid_until}
-              onChange={(e) => set('store_paid_until', e.target.value)}
-              error={!!errors.store_paid_until}
-              helperText={errors.store_paid_until}
-              disabled={disabled}
-              slotProps={{ inputLabel: { shrink: true } }}
+          {partnerId && values.board_store && (
+            <MonthlyPaymentsEditor
+              partnerId={partnerId}
+              product="board_store"
+              label="Pagamentos — Guardaria"
             />
           )}
+
+          <FormControlLabel
+            control={
+              <Switch
+                checked={values.utilization}
+                onChange={(e) => set('utilization', e.target.checked)}
+                disabled={disabled}
+              />
+            }
+            label="Utilização"
+          />
+
+          {partnerId && values.utilization && (
+            <MonthlyPaymentsEditor
+              partnerId={partnerId}
+              product="utilization"
+              label="Pagamentos — Utilização"
+            />
+          )}
+
+          <FormControlLabel
+            control={
+              <Switch
+                checked={values.surf_lessons}
+                onChange={(e) => set('surf_lessons', e.target.checked)}
+                disabled={disabled}
+              />
+            }
+            label="Aulas de Surf"
+          />
         </Stack>
       </Box>
 

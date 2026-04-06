@@ -2,10 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Database from '@tauri-apps/plugin-sql';
 import { invoke } from '@tauri-apps/api/core';
 import AddIcon from '@mui/icons-material/Add';
-import CheckIcon from '@mui/icons-material/Check';
 import CloseIcon from '@mui/icons-material/Close';
 import EditIcon from '@mui/icons-material/Edit';
-import RemoveIcon from '@mui/icons-material/Remove';
 import SearchIcon from '@mui/icons-material/Search';
 import {
   Box,
@@ -54,12 +52,17 @@ const socioToFormValues = (s: Socio): SocioFormValues => ({
   email: s.email,
   phone: s.phone ?? '',
   address: s.address ?? '',
-  nss: s.nss ?? '',
+  observacoes: s.observacoes ?? '',
+  ncc: s.ncc ?? '',
+  nif: s.nif ?? '',
+  birth_date: s.birth_date ?? '',
+  postal_code: s.postal_code ?? '',
   joined_at: s.joined_at ?? new Date().toISOString().split('T')[0],
   status: s.status ?? 'active',
   paid_until: s.paid_until ?? '',
   board_store: !!s.board_store,
-  store_paid_until: s.store_paid_until ?? '',
+  utilization: !!s.utilization,
+  surf_lessons: !!s.surf_lessons,
 });
 
 /** Returns true if every character in `query` appears in order within `text`. */
@@ -88,6 +91,8 @@ export const Socios = () => {
   const [filterStatus, setFilterStatus] = useState<'all' | SocioStatus>('all');
   const [filterPayment, setFilterPayment] = useState<'all' | 'paid' | 'overdue'>('all');
   const [filterGuardaria, setFilterGuardaria] = useState<'all' | 'yes' | 'no'>('all');
+  const [filterUtilization, setFilterUtilization] = useState<'all' | 'yes' | 'no'>('all');
+  const [filterSurfLessons, setFilterSurfLessons] = useState<'all' | 'yes' | 'no'>('all');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
 
@@ -97,9 +102,9 @@ export const Socios = () => {
       const db = await loadDb();
       const rows = await db.select<Socio[]>(`
         SELECT
-          s.id, s.name, s.email, s.phone, s.address, s.nss,
+          s.id, s.name, s.email, s.phone, s.address, s.observacoes, s.ncc, s.nif, s.birth_date, s.postal_code,
           ss.joined_at, ss.status, ss.paid_until,
-          ss.board_store, ss.store_paid_until
+          ss.board_store, ss.utilization, ss.surf_lessons
         FROM socio s
         LEFT JOIN socio_status ss ON ss.partner_id = s.id
         ORDER BY s.name ASC
@@ -127,9 +132,13 @@ export const Socios = () => {
       }
       if (filterGuardaria === 'yes' && !s.board_store) return false;
       if (filterGuardaria === 'no' && !!s.board_store) return false;
+      if (filterUtilization === 'yes' && !s.utilization) return false;
+      if (filterUtilization === 'no' && !!s.utilization) return false;
+      if (filterSurfLessons === 'yes' && !s.surf_lessons) return false;
+      if (filterSurfLessons === 'no' && !!s.surf_lessons) return false;
       return true;
     });
-  }, [socios, search, filterStatus, filterPayment, filterGuardaria]);
+  }, [socios, search, filterStatus, filterPayment, filterGuardaria, filterUtilization, filterSurfLessons]);
 
   const paginated = useMemo(
     () => filtered.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage),
@@ -175,14 +184,18 @@ export const Socios = () => {
       const db = await loadDb();
 
       await db.execute(
-        `INSERT INTO socio (name, email, phone, address, nss)
-         VALUES ($1, $2, $3, $4, $5)`,
+        `INSERT INTO socio (name, email, phone, address, observacoes, ncc, nif, birth_date, postal_code)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
         [
           values.name,
           values.email,
           values.phone || null,
           values.address || null,
-          values.nss || null,
+          values.observacoes || null,
+          values.ncc || null,
+          values.nif || null,
+          values.birth_date || null,
+          values.postal_code || null,
         ],
       );
 
@@ -190,21 +203,18 @@ export const Socios = () => {
         'SELECT last_insert_rowid() AS id',
       );
 
-      const storePaidUntil = values.board_store
-        ? values.store_paid_until
-        : values.paid_until;
-
       await db.execute(
         `INSERT INTO socio_status
-           (partner_id, joined_at, status, paid_until, board_store, store_paid_until)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
+           (partner_id, joined_at, status, paid_until, board_store, utilization, surf_lessons)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
         [
           id,
           values.joined_at,
           values.status,
           values.paid_until,
           values.board_store ? 1 : 0,
-          storePaidUntil,
+          values.utilization ? 1 : 0,
+          values.surf_lessons ? 1 : 0,
         ],
       );
 
@@ -223,34 +233,40 @@ export const Socios = () => {
       const db = await loadDb();
 
       await db.execute(
-        `UPDATE socio SET name=$1, email=$2, phone=$3, address=$4, nss=$5 WHERE id=$6`,
+        `UPDATE socio SET name=$1, email=$2, phone=$3, address=$4, observacoes=$5, ncc=$6, nif=$7, birth_date=$8, postal_code=$9 WHERE id=$10`,
         [
           values.name,
           values.email,
           values.phone || null,
           values.address || null,
-          values.nss || null,
+          values.observacoes || null,
+          values.ncc || null,
+          values.nif || null,
+          values.birth_date || null,
+          values.postal_code || null,
           id,
         ],
       );
 
-      const storePaidUntil = values.board_store
-        ? values.store_paid_until
-        : values.paid_until;
-
       await db.execute(
         `UPDATE socio_status
-         SET joined_at=$1, status=$2, paid_until=$3, board_store=$4, store_paid_until=$5
-         WHERE partner_id=$6`,
+         SET joined_at=$1, status=$2, paid_until=$3,
+             board_store=$4, utilization=$5, surf_lessons=$6
+         WHERE partner_id=$7`,
         [
           values.joined_at,
           values.status,
           values.paid_until,
           values.board_store ? 1 : 0,
-          storePaidUntil,
+          values.utilization ? 1 : 0,
+          values.surf_lessons ? 1 : 0,
           id,
         ],
       );
+
+      if (values.status === 'inactive' || values.status === 'suspended') {
+        await invoke('strip_inactive_products');
+      }
 
       setDialog(null);
       await fetchSocios();
@@ -364,6 +380,34 @@ export const Socios = () => {
             <ToggleButton value="no">Não</ToggleButton>
           </ToggleButtonGroup>
         </Box>
+
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography variant="caption" color="text.secondary" noWrap>Utilização</Typography>
+          <ToggleButtonGroup
+            size="small"
+            exclusive
+            value={filterUtilization}
+            onChange={(_, v) => { if (v) { setFilterUtilization(v); resetPage(); } }}
+          >
+            <ToggleButton value="all">Todos</ToggleButton>
+            <ToggleButton value="yes">Sim</ToggleButton>
+            <ToggleButton value="no">Não</ToggleButton>
+          </ToggleButtonGroup>
+        </Box>
+
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography variant="caption" color="text.secondary" noWrap>Aulas de Surf</Typography>
+          <ToggleButtonGroup
+            size="small"
+            exclusive
+            value={filterSurfLessons}
+            onChange={(_, v) => { if (v) { setFilterSurfLessons(v); resetPage(); } }}
+          >
+            <ToggleButton value="all">Todos</ToggleButton>
+            <ToggleButton value="yes">Sim</ToggleButton>
+            <ToggleButton value="no">Não</ToggleButton>
+          </ToggleButtonGroup>
+        </Box>
       </Box>
 
       {/* ── Table ─────────────────────────────────────────────── */}
@@ -381,9 +425,9 @@ export const Socios = () => {
                   <TableCell>Email</TableCell>
                   <TableCell>Telefone</TableCell>
                   <TableCell>Estado</TableCell>
-                  <TableCell>Pago Até</TableCell>
-                  <TableCell align="center">Pago?</TableCell>
-                  <TableCell align="center">Guardaria</TableCell>
+                  <TableCell align="center">Quota Anual Paga?</TableCell>
+                  <TableCell>Paga Até</TableCell>
+                  <TableCell>Produtos</TableCell>
                   <TableCell />
                 </TableRow>
               </TableHead>
@@ -416,7 +460,6 @@ export const Socios = () => {
                           '—'
                         )}
                       </TableCell>
-                      <TableCell>{s.paid_until ?? '—'}</TableCell>
                       <TableCell align="center">
                         {s.status === 'active' && s.paid_until ? (
                           <Chip
@@ -426,12 +469,14 @@ export const Socios = () => {
                           />
                         ) : null}
                       </TableCell>
-                      <TableCell align="center">
-                        {s.board_store ? (
-                          <CheckIcon fontSize="small" color="success" />
-                        ) : (
-                          <RemoveIcon fontSize="small" color="disabled" />
-                        )}
+                      <TableCell>{s.paid_until ?? '—'}</TableCell>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                          {s.board_store ? <Chip label="Guardaria" size="small" variant="outlined" /> : null}
+                          {s.utilization ? <Chip label="Utilização" size="small" variant="outlined" /> : null}
+                          {s.surf_lessons ? <Chip label="Aulas de Surf" size="small" variant="outlined" /> : null}
+                          {!s.board_store && !s.utilization && !s.surf_lessons ? <span style={{ color: 'var(--mui-palette-text-disabled)' }}>—</span> : null}
+                        </Box>
                       </TableCell>
                       <TableCell align="right" sx={{ pr: 1 }}>
                         <IconButton
@@ -485,6 +530,7 @@ export const Socios = () => {
           {dialog?.mode === 'edit' ? (
             <SocioForm
               key={dialog.socio.id}
+              partnerId={dialog.socio.id}
               initialValues={socioToFormValues(dialog.socio)}
               onSubmit={handleEdit}
               onCancel={() => setDialog(null)}

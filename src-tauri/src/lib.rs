@@ -1,3 +1,4 @@
+use log::{error, info};
 use tauri_plugin_sql::{Migration, MigrationKind};
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -8,7 +9,7 @@ fn greet(name: &str) -> String {
 
 #[tauri::command]
 fn log_to_terminal(message: &str) {
-    println!("{}", message); // prints to terminal
+    info!("{}", message);
 }
 
 /* #[tauri::command]
@@ -76,6 +77,82 @@ async fn get_sea_forecast() -> Result<SeaForecast, String> {
     })
 }
 
+/// Core logic: strips all products from inactive/suspended partners.
+/// Operates on an already-open pool so it can be composed into larger flows.
+async fn do_strip_products(pool: &sqlx::SqlitePool) -> Result<u64, String> {
+    let n = sqlx::query(
+        "UPDATE socio_status
+         SET board_store = 0, utilization = 0, surf_lessons = 0
+         WHERE status IN ('inactive', 'suspended')
+           AND (board_store = 1 OR utilization = 1 OR surf_lessons = 1)",
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?
+    .rows_affected();
+    Ok(n)
+}
+
+/// Rule 1 — runs on app startup:
+/// Partners whose `paid_until` is 2+ years in the past are set to inactive,
+/// then rule 2 is applied to all inactive/suspended partners.
+async fn enforce_inactivity_by_omission(app: &tauri::AppHandle) -> Result<(), String> {
+    use sqlx::SqlitePool;
+    use tauri::Manager;
+
+    let db_path = app
+        .path()
+        .app_config_dir()
+        .map_err(|e| e.to_string())?
+        .join("test.db");
+
+    let pool = SqlitePool::connect(&format!("sqlite:{}", db_path.display()))
+        .await
+        .map_err(|e| format!("failed to connect: {e}"))?;
+
+    let inactivated = sqlx::query(
+        "UPDATE socio_status
+         SET status = 'inactive'
+         WHERE status != 'inactive'
+           AND paid_until <= date('now', '-2 years')",
+    )
+    .execute(&pool)
+    .await
+    .map_err(|e| e.to_string())?
+    .rows_affected();
+
+    let stripped = do_strip_products(&pool).await?;
+
+    pool.close().await;
+    info!("[membership] {inactivated} partner(s) set inactive by omission; {stripped} stripped of products");
+    Ok(())
+}
+
+/// Rule 2 — Tauri command callable from the frontend:
+/// Strips all products from any inactive or suspended partner.
+/// Call this after saving a partner whose status is 'inactive' or 'suspended'.
+#[tauri::command]
+async fn strip_inactive_products(app: tauri::AppHandle) -> Result<(), String> {
+    use sqlx::SqlitePool;
+    use tauri::Manager;
+
+    let db_path = app
+        .path()
+        .app_config_dir()
+        .map_err(|e| e.to_string())?
+        .join("test.db");
+
+    let pool = SqlitePool::connect(&format!("sqlite:{}", db_path.display()))
+        .await
+        .map_err(|e| format!("failed to connect: {e}"))?;
+
+    let stripped = do_strip_products(&pool).await?;
+
+    pool.close().await;
+    info!("[membership] {stripped} partner(s) stripped of products");
+    Ok(())
+}
+
 /// Populates the database with development seed data.
 /// Resets socios and socio_status to a known state on each call.
 /// Only compiled in debug builds — not available in release.
@@ -117,7 +194,7 @@ async fn seed_dev_data(app: tauri::AppHandle) -> Result<String, String> {
     }
 
     pool.close().await;
-    println!("[seed] dev data loaded from seed.sql");
+    info!("[seed] dev data loaded from seed.sql");
     Ok("Seed data loaded successfully.".into())
 }
 
@@ -150,7 +227,7 @@ async fn purge_dev_data(app: tauri::AppHandle) -> Result<String, String> {
         .map_err(|e| e.to_string())?;
 
     pool.close().await;
-    println!("[purge] all socios deleted");
+    info!("[purge] all socios deleted");
     Ok("Purge completed.".into())
 }
 
@@ -164,20 +241,64 @@ pub fn run() {
             description: "creates socio and socio_status tables",
             sql: include_str!("../db/init.sql"),
             kind: MigrationKind::Up,
-        }
+        },
+        Migration {
+            version: 2,
+            description: "replace nss with ncc, nif, birth_date, postal_code",
+            sql: include_str!("../db/migrate_002.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 3,
+            description: "add utilization and surf_lessons products to socio_status",
+            sql: include_str!("../db/migrate_003.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 4,
+            description: "replace paid_until date fields with monthly_payments table",
+            sql: include_str!("../db/migrate_004.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 5,
+            description: "add observacoes field to socio",
+            sql: include_str!("../db/migrate_005.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .target(tauri_plugin_log::Target::new(
+                    tauri_plugin_log::TargetKind::Folder {
+                        path: std::path::PathBuf::from(env!("ISURF_LOG_DIR")),
+                        file_name: Some("isurf-mgmt".to_string()),
+                    },
+                ))
+                .build(),
+        )
         .plugin(
             tauri_plugin_sql::Builder::default()
                 .add_migrations("sqlite:test.db", migrations)
                 .build()
         )
         .plugin(tauri_plugin_opener::init())
+        .setup(|app| {
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = enforce_inactivity_by_omission(&handle).await {
+                    error!("[inactivity] {e}");
+                }
+            });
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             greet,
             log_to_terminal,
             get_sea_forecast,
+            strip_inactive_products,
             #[cfg(debug_assertions)]
             seed_dev_data,
             #[cfg(debug_assertions)]
