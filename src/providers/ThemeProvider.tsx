@@ -35,7 +35,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           },
         },
         typography: {
-          fontSize: 15,
+          fontSize: 12,
         }
       }),
     [mode]

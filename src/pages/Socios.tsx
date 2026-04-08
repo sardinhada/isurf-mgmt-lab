@@ -318,26 +318,24 @@ export const Socios = () => {
         </Box>
       </Box>
 
-      {/* ── Search ────────────────────────────────────────────── */}
-      <TextField
-        size="small"
-        placeholder="Pesquisar por nome ou email…"
-        value={search}
-        onChange={(e) => handleSearchChange(e.target.value)}
-        sx={{ mb: 2, width: 320 }}
-        slotProps={{
-          input: {
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon fontSize="small" />
-              </InputAdornment>
-            ),
-          },
-        }}
-      />
-
-      {/* ── Filters ───────────────────────────────────────────── */}
+      {/* ── Search + Filters ──────────────────────────────────── */}
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mb: 2, alignItems: 'center' }}>
+        <TextField
+          size="small"
+          placeholder="Pesquisar por nome ou email…"
+          value={search}
+          onChange={(e) => handleSearchChange(e.target.value)}
+          sx={{ width: 280 }}
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" />
+                </InputAdornment>
+              ),
+            },
+          }}
+        />
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <Typography variant="caption" color="text.secondary" noWrap>Estado</Typography>
           <ToggleButtonGroup

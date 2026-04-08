@@ -6,10 +6,7 @@ export const Ajuda = () => {
   return (
     <Box sx={{ p: 4 }}>
       <Typography variant="h5" fontWeight={600} gutterBottom>
-        Ajuda
-      </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 4 }}>
-        Se precisares de ajuda com alguma coisa fala comigo!
+        Pecisas de Ajuda?
       </Typography>
 
       <Card variant="outlined" sx={{ maxWidth: 460, borderRadius: 3 }}>
@@ -18,7 +15,7 @@ export const Ajuda = () => {
             Suporte Técnico
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-            Qualquer coisa que nao percebas ou qualquer coisa que queiras aqui acrescentar, etc. Nerdy questions welcome
+            Qualquer coisa que nao percebas, que esteja em falta ou a mais, feedback, sugestoes, prato do dia...
           </Typography>
 
           <Divider sx={{ mb: 2.5 }} />
@@ -52,7 +49,7 @@ export const Ajuda = () => {
           <Divider sx={{ my: 2.5 }} />
 
           <Typography variant="caption" color="text.secondary">
-            Liga-me a hora de almoco ou em horario pos-laboral! Senao, aos fins de semana tambem da. Beijinhos!
+            Liga-me a hora de almoco ou em horario pos-laboral e fins de semana; Se nao atender prometo devolver a chamada.
           </Typography>
         </CardContent>
       </Card>
