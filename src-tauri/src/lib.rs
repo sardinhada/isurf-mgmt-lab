@@ -82,6 +82,14 @@ fn api_client() -> reqwest::Client {
     reqwest::Client::new()
 }
 
+/// Returns the configured API base URL (host:port) for display purposes.
+#[tauri::command]
+fn get_api_base() -> String {
+    let host = std::env::var("API_HOST").unwrap_or_else(|_| "localhost".into());
+    let port = std::env::var("API_PORT").unwrap_or_else(|_| "3000".into());
+    format!("{}:{}", host, port)
+}
+
 /// GET /api — health check.
 #[tauri::command]
 async fn health_check() -> bool {
@@ -274,6 +282,7 @@ pub fn run() {
             greet,
             log_to_terminal,
             get_sea_forecast,
+            get_api_base,
             health_check,
             list_socios,
             get_socio,

@@ -75,6 +75,11 @@ const statusLabel = (s: ApiStatus) =>
 
 const ApiStatusCard = () => {
   const [status, setStatus] = useState<ApiStatus>('checking');
+  const [apiBase, setApiBase] = useState('localhost:3000');
+
+  useEffect(() => {
+    invoke<string>('get_api_base').then(setApiBase).catch(() => {});
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -111,7 +116,7 @@ const ApiStatusCard = () => {
         <Divider sx={{ mb: 2 }} />
 
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
-          <Typography variant="body2" fontWeight={600}>Servidor (localhost:3000)</Typography>
+          <Typography variant="body2" fontWeight={600}>Servidor ({apiBase})</Typography>
           <Chip
             label={statusLabel(status)}
             color={statusColor(status)}
