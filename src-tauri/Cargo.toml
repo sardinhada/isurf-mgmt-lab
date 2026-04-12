@@ -25,6 +25,8 @@ serde_json = "1"
 tauri-plugin-log = "2"
 log = "0.4"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+dotenvy = "0.15"
+dirs = "5"
 
 [profile.dev]
 opt-level = 1          # faster runtime than 0, negligible compile cost

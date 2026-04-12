@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "isurf-mgmt-alpha",
+        "title": "Socios ADMS",
         "width": 1024,
         "height": 866,
         "minWidth": 1024,
@@ -25,7 +25,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["deb"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

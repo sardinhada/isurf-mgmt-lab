@@ -3,7 +3,11 @@
 
 use log::info;
 
-const BASE_URL: &str = "http://localhost:3000";
+fn base_url() -> String {
+    let host = std::env::var("API_HOST").unwrap_or_else(|_| "localhost".into());
+    let port = std::env::var("API_PORT").unwrap_or_else(|_| "3000".into());
+    format!("http://{}:{}", host, port)
+}
 
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -82,7 +86,7 @@ fn api_client() -> reqwest::Client {
 #[tauri::command]
 async fn health_check() -> bool {
     api_client()
-        .get(format!("{BASE_URL}/api"))
+        .get(format!("{}/api", base_url()))
         .send()
         .await
         .map(|r| r.status().is_success())
@@ -113,7 +117,7 @@ async fn list_socios(
     if let Some(ref s) = surf_lessons { query.push(("surf_lessons", s.clone())); }
 
     api_client()
-        .get(format!("{BASE_URL}/api/socios"))
+        .get(format!("{}/api/socios", base_url()))
         .query(&query)
         .send()
         .await
@@ -127,7 +131,7 @@ async fn list_socios(
 #[tauri::command]
 async fn get_socio(id: i64) -> Result<serde_json::Value, String> {
     let resp = api_client()
-        .get(format!("{BASE_URL}/api/socios/{id}"))
+        .get(format!("{}/api/socios/{}", base_url(), id))
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -161,7 +165,7 @@ async fn create_socio(body: serde_json::Value) -> Result<serde_json::Value, Stri
     });
 
     let create_resp = client
-        .post(format!("{BASE_URL}/api/socios"))
+        .post(format!("{}/api/socios", base_url()))
         .json(&socio_body)
         .send()
         .await
@@ -192,7 +196,7 @@ async fn create_socio(body: serde_json::Value) -> Result<serde_json::Value, Stri
     });
 
     let patch_resp = client
-        .patch(format!("{BASE_URL}/api/socios/{id}"))
+        .patch(format!("{}/api/socios/{}", base_url(), id))
         .json(&status_body)
         .send()
         .await
@@ -212,7 +216,7 @@ async fn create_socio(body: serde_json::Value) -> Result<serde_json::Value, Stri
 #[tauri::command]
 async fn update_socio(id: i64, body: serde_json::Value) -> Result<serde_json::Value, String> {
     let resp = api_client()
-        .patch(format!("{BASE_URL}/api/socios/{id}"))
+        .patch(format!("{}/api/socios/{}", base_url(), id))
         .json(&body)
         .send()
         .await
@@ -239,6 +243,12 @@ async fn update_socio(id: i64, body: serde_json::Value) -> Result<serde_json::Va
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Load .env from the user's config directory (~/.config/isurf-mgmt-alpha/.env on Linux)
+    if let Some(config_dir) = dirs::config_dir() {
+        let env_path = config_dir.join("isurf-mgmt-alpha").join(".env");
+        let _ = dotenvy::from_path_override(env_path); // silently ignore if file doesn't exist
+    }
+
     tauri::Builder::default()
         .plugin(
             tauri_plugin_log::Builder::new()
