@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import Database from '@tauri-apps/plugin-sql';
+import { useCallback, useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import AddIcon from '@mui/icons-material/Add';
 import CloseIcon from '@mui/icons-material/Close';
@@ -43,8 +42,6 @@ const STATUS_COLOR: Record<SocioStatus, 'success' | 'default' | 'warning'> = {
   suspended: 'warning',
 };
 
-const loadDb = () => Database.load('sqlite:test.db');
-
 type DialogState = { mode: 'create' } | { mode: 'edit'; socio: Socio } | null;
 
 const socioToFormValues = (s: Socio): SocioFormValues => ({
@@ -65,31 +62,19 @@ const socioToFormValues = (s: Socio): SocioFormValues => ({
   surf_lessons: !!s.surf_lessons,
 });
 
-/** Returns true if every character in `query` appears in order within `text`. */
-const fuzzyMatch = (query: string, text: string): boolean => {
-  const q = query.toLowerCase();
-  const t = text.toLowerCase();
-  let qi = 0;
-  for (let ti = 0; ti < t.length && qi < q.length; ti++) {
-    if (t[ti] === q[qi]) qi++;
-  }
-  return qi === q.length;
-};
-
 const ROWS_PER_PAGE_OPTIONS = [10, 25, 50];
 
 const today = new Date().toISOString().split('T')[0];
 
 export const Socios = () => {
   const [socios, setSocios] = useState<Socio[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [dialog, setDialog] = useState<DialogState>(null);
   const [saving, setSaving] = useState(false);
-  const [seeding, setSeeding] = useState(false);
-  const [purging, setPurging] = useState(false);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | SocioStatus>('all');
-  const [filterPayment, setFilterPayment] = useState<'all' | 'paid' | 'overdue'>('all');
+  const [filterPayment, setFilterPayment] = useState<'all' | 'paid' | 'due'>('all');
   const [filterGuardaria, setFilterGuardaria] = useState<'all' | 'yes' | 'no'>('all');
   const [filterUtilization, setFilterUtilization] = useState<'all' | 'yes' | 'no'>('all');
   const [filterSurfLessons, setFilterSurfLessons] = useState<'all' | 'yes' | 'no'>('all');
@@ -99,51 +84,31 @@ export const Socios = () => {
   const fetchSocios = useCallback(async () => {
     setLoading(true);
     try {
-      const db = await loadDb();
-      const rows = await db.select<Socio[]>(`
-        SELECT
-          s.id, s.name, s.email, s.phone, s.address, s.observacoes, s.ncc, s.nif, s.birth_date, s.postal_code,
-          ss.joined_at, ss.status, ss.paid_until,
-          ss.board_store, ss.utilization, ss.surf_lessons
-        FROM socio s
-        LEFT JOIN socio_status ss ON ss.partner_id = s.id
-        ORDER BY s.name ASC
-      `);
-      setSocios(rows);
+      const result = await invoke<{ data: { socios: Socio[]; total: number; page: number; limit: number } }>(
+        'list_socios',
+        {
+          page: page + 1, // API is 1-based
+          limit: rowsPerPage,
+          search: search.trim() || undefined,
+          state: filterStatus !== 'all' ? filterStatus : undefined,
+          payment: filterPayment !== 'all' ? filterPayment : undefined,
+          board_store: filterGuardaria !== 'all' ? filterGuardaria : undefined,
+          utilization: filterUtilization !== 'all' ? filterUtilization : undefined,
+          surf_lessons: filterSurfLessons !== 'all' ? filterSurfLessons : undefined,
+        },
+      );
+      setSocios(result.data.socios);
+      setTotal(result.data.total);
+    } catch (e) {
+      console.error('[socios] fetch failed:', e);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [page, rowsPerPage, search, filterStatus, filterPayment, filterGuardaria, filterUtilization, filterSurfLessons]);
 
   useEffect(() => {
     fetchSocios();
   }, [fetchSocios]);
-
-  const filtered = useMemo(() => {
-    const q = search.trim();
-    return socios.filter((s) => {
-      if (q && !fuzzyMatch(q, s.name) && !fuzzyMatch(q, s.email)) return false;
-      if (filterStatus !== 'all' && s.status !== filterStatus) return false;
-      if (filterPayment !== 'all') {
-        if (s.status !== 'active' || !s.paid_until) return false;
-        const paid = s.paid_until >= today;
-        if (filterPayment === 'paid' && !paid) return false;
-        if (filterPayment === 'overdue' && paid) return false;
-      }
-      if (filterGuardaria === 'yes' && !s.board_store) return false;
-      if (filterGuardaria === 'no' && !!s.board_store) return false;
-      if (filterUtilization === 'yes' && !s.utilization) return false;
-      if (filterUtilization === 'no' && !!s.utilization) return false;
-      if (filterSurfLessons === 'yes' && !s.surf_lessons) return false;
-      if (filterSurfLessons === 'no' && !!s.surf_lessons) return false;
-      return true;
-    });
-  }, [socios, search, filterStatus, filterPayment, filterGuardaria, filterUtilization, filterSurfLessons]);
-
-  const paginated = useMemo(
-    () => filtered.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage),
-    [filtered, page, rowsPerPage],
-  );
 
   const resetPage = () => setPage(0);
 
@@ -152,74 +117,33 @@ export const Socios = () => {
     resetPage();
   };
 
-  const handleSeed = async () => {
-    setSeeding(true);
-    try {
-      await invoke('seed_dev_data');
-      await fetchSocios();
-    } catch (e) {
-      console.error('[seed] failed:', e);
-      alert(`Seed falhou:\n${e}`);
-    } finally {
-      setSeeding(false);
-    }
-  };
-
-  const handlePurge = async () => {
-    setPurging(true);
-    try {
-      await invoke('purge_dev_data');
-      await fetchSocios();
-    } catch (e) {
-      console.error('[purge] failed:', e);
-      alert(`Purge falhou:\n${e}`);
-    } finally {
-      setPurging(false);
-    }
-  };
-
   const handleCreate = async (values: SocioFormValues) => {
     setSaving(true);
     try {
-      const db = await loadDb();
-
-      await db.execute(
-        `INSERT INTO socio (name, email, phone, address, observacoes, ncc, nif, birth_date, postal_code)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-        [
-          values.name,
-          values.email,
-          values.phone || null,
-          values.address || null,
-          values.observacoes || null,
-          values.ncc || null,
-          values.nif || null,
-          values.birth_date || null,
-          values.postal_code || null,
-        ],
-      );
-
-      const [{ id }] = await db.select<{ id: number }[]>(
-        'SELECT last_insert_rowid() AS id',
-      );
-
-      await db.execute(
-        `INSERT INTO socio_status
-           (partner_id, joined_at, status, paid_until, board_store, utilization, surf_lessons)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [
-          id,
-          values.joined_at,
-          values.status,
-          values.paid_until,
-          values.board_store ? 1 : 0,
-          values.utilization ? 1 : 0,
-          values.surf_lessons ? 1 : 0,
-        ],
-      );
-
+      await invoke('create_socio', {
+        body: {
+          name: values.name,
+          email: values.email,
+          phone: values.phone || null,
+          address: values.address || null,
+          observacoes: values.observacoes || null,
+          ncc: values.ncc || null,
+          nif: values.nif || null,
+          birth_date: values.birth_date || null,
+          postal_code: values.postal_code || null,
+          joined_at: values.joined_at || null,
+          status: values.status,
+          paid_until: values.paid_until || null,
+          board_store: values.board_store,
+          utilization: values.utilization,
+          surf_lessons: values.surf_lessons,
+        },
+      });
       setDialog(null);
       await fetchSocios();
+    } catch (e) {
+      console.error('[socios] create failed:', e);
+      alert(`Erro ao criar sócio:\n${e}`);
     } finally {
       setSaving(false);
     }
@@ -230,46 +154,31 @@ export const Socios = () => {
     const { id } = dialog.socio;
     setSaving(true);
     try {
-      const db = await loadDb();
-
-      await db.execute(
-        `UPDATE socio SET name=$1, email=$2, phone=$3, address=$4, observacoes=$5, ncc=$6, nif=$7, birth_date=$8, postal_code=$9 WHERE id=$10`,
-        [
-          values.name,
-          values.email,
-          values.phone || null,
-          values.address || null,
-          values.observacoes || null,
-          values.ncc || null,
-          values.nif || null,
-          values.birth_date || null,
-          values.postal_code || null,
-          id,
-        ],
-      );
-
-      await db.execute(
-        `UPDATE socio_status
-         SET joined_at=$1, status=$2, paid_until=$3,
-             board_store=$4, utilization=$5, surf_lessons=$6
-         WHERE partner_id=$7`,
-        [
-          values.joined_at,
-          values.status,
-          values.paid_until,
-          values.board_store ? 1 : 0,
-          values.utilization ? 1 : 0,
-          values.surf_lessons ? 1 : 0,
-          id,
-        ],
-      );
-
-      if (values.status === 'inactive' || values.status === 'suspended') {
-        await invoke('strip_inactive_products');
-      }
-
+      await invoke('update_socio', {
+        id,
+        body: {
+          name: values.name,
+          email: values.email,
+          phone: values.phone || null,
+          address: values.address || null,
+          observacoes: values.observacoes || null,
+          ncc: values.ncc || null,
+          nif: values.nif || null,
+          birth_date: values.birth_date || null,
+          postal_code: values.postal_code || null,
+          joined_at: values.joined_at || null,
+          status: values.status,
+          paid_until: values.paid_until || null,
+          board_store: values.board_store,
+          utilization: values.utilization,
+          surf_lessons: values.surf_lessons,
+        },
+      });
       setDialog(null);
       await fetchSocios();
+    } catch (e) {
+      console.error('[socios] update failed:', e);
+      alert(`Erro ao guardar sócio:\n${e}`);
     } finally {
       setSaving(false);
     }
@@ -289,33 +198,13 @@ export const Socios = () => {
         <Typography variant="h5" fontWeight={600}>
           Sócios
         </Typography>
-        <Box sx={{ display: 'flex', gap: 1 }}>
-          <Button
-            variant="outlined"
-            color="warning"
-            size="small"
-            onClick={handleSeed}
-            disabled={seeding || purging}
-          >
-            {seeding ? 'A semear…' : '[dev] Seed'}
-          </Button>
-          <Button
-            variant="outlined"
-            color="error"
-            size="small"
-            onClick={handlePurge}
-            disabled={purging || seeding}
-          >
-            {purging ? 'A purgar…' : '[dev] Purge'}
-          </Button>
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => setDialog({ mode: 'create' })}
-          >
-            Novo Sócio
-          </Button>
-        </Box>
+        <Button
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={() => setDialog({ mode: 'create' })}
+        >
+          Novo Sócio
+        </Button>
       </Box>
 
       {/* ── Search + Filters ──────────────────────────────────── */}
@@ -361,7 +250,7 @@ export const Socios = () => {
           >
             <ToggleButton value="all">Todos</ToggleButton>
             <ToggleButton value="paid">Em dia</ToggleButton>
-            <ToggleButton value="overdue">Vencido</ToggleButton>
+            <ToggleButton value="due">Vencido</ToggleButton>
           </ToggleButtonGroup>
         </Box>
 
@@ -431,7 +320,7 @@ export const Socios = () => {
               </TableHead>
 
               <TableBody>
-                {paginated.length === 0 ? (
+                {socios.length === 0 ? (
                   <TableRow>
                     <TableCell
                       colSpan={8}
@@ -442,7 +331,7 @@ export const Socios = () => {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  paginated.map((s) => (
+                  socios.map((s) => (
                     <TableRow key={s.id} hover>
                       <TableCell>{s.name}</TableCell>
                       <TableCell>{s.email}</TableCell>
@@ -493,7 +382,7 @@ export const Socios = () => {
 
           <TablePagination
             component="div"
-            count={filtered.length}
+            count={total}
             page={page}
             rowsPerPage={rowsPerPage}
             rowsPerPageOptions={ROWS_PER_PAGE_OPTIONS}

@@ -16,17 +16,19 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
-sqlx-cli = { version = "0.8", features = ["sqlite"] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tauri-plugin-sql = { version = "2", features = ["sqlite"] }
 tauri-plugin-log = "2"
 log = "0.4"
-sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio-native-tls", "macros"] }
-tokio = { version = "1", features = ["full"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
+[profile.dev]
+opt-level = 1          # faster runtime than 0, negligible compile cost
+
+[profile.dev.package."*"]
+opt-level = 3          # deps (tauri, serde, reqwest…) always fully optimised
 

@@ -1,13 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import Database from '@tauri-apps/plugin-sql';
+import { invoke } from '@tauri-apps/api/core';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import { Box, Chip, CircularProgress, IconButton, Typography } from '@mui/material';
-import type { MonthlyPayment, MonthlyPaymentProduct } from '../../types/socio';
+import type { MonthlyPayment, MonthlyPaymentProduct, SocioDetail } from '../../types/socio';
 
 const MONTH_LABELS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-
-const loadDb = () => Database.load('sqlite:test.db');
 
 interface Props {
   partnerId: number;
@@ -24,14 +22,14 @@ export const MonthlyPaymentsEditor = ({ partnerId, product, label }: Props) => {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const db = await loadDb();
-      const rows = await db.select<MonthlyPayment[]>(
-        `SELECT month, paid FROM monthly_payments
-         WHERE partner_id=$1 AND product=$2 AND year=$3`,
-        [partnerId, product, year],
-      );
+      const result = await invoke<{ data: SocioDetail }>('get_socio', { id: partnerId });
+      const payments: MonthlyPayment[] = result.data.status?.monthly_payments ?? [];
       const arr = Array(12).fill(false);
-      for (const row of rows) arr[row.month - 1] = !!row.paid;
+      for (const p of payments) {
+        if (p.product === product && p.year === year) {
+          arr[p.month - 1] = p.paid;
+        }
+      }
       setPaid(arr);
     } finally {
       setLoading(false);
@@ -45,13 +43,14 @@ export const MonthlyPaymentsEditor = ({ partnerId, product, label }: Props) => {
     const newPaid = !paid[monthIndex];
     setToggling(monthIndex);
     try {
-      const db = await loadDb();
-      await db.execute(
-        `INSERT INTO monthly_payments (partner_id, product, year, month, paid)
-         VALUES ($1, $2, $3, $4, $5)
-         ON CONFLICT(partner_id, product, year, month) DO UPDATE SET paid=excluded.paid`,
-        [partnerId, product, year, monthIndex + 1, newPaid ? 1 : 0],
-      );
+      await invoke('update_socio', {
+        id: partnerId,
+        body: {
+          monthly_payments: [
+            { product, year, month: monthIndex + 1, paid: newPaid },
+          ],
+        },
+      });
       setPaid((prev) => {
         const next = [...prev];
         next[monthIndex] = newPaid;

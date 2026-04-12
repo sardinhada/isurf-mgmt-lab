@@ -1,7 +1,10 @@
-use log::{error, info};
-use tauri_plugin_sql::{Migration, MigrationKind};
+// Prevents additional console window on Windows in release, DO NOT REMOVE!!
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
+use log::info;
+
+const BASE_URL: &str = "http://localhost:3000";
+
 #[tauri::command]
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
@@ -12,20 +15,15 @@ fn log_to_terminal(message: &str) {
     info!("{}", message);
 }
 
-/* #[tauri::command]
-async fn get_all_socios(
-    db: tauri_plugin_sql::Database
-) -> Result<(), String> {
-
-} */
+// ── Sea forecast ─────────────────────────────────────────────────────────────
 
 #[derive(serde::Serialize)]
 struct SeaForecast {
     forecast_date: String,
-    wave_height: f64,  // meters  (avg totalSeaMax across stations)
-    wave_dir: String,  // most common predWaveDir
-    wave_period: f64,  // seconds (avg wavePeriodMax)
-    sst: f64,          // °C      (avg sstMax)
+    wave_height: f64,
+    wave_dir: String,
+    wave_period: f64,
+    sst: f64,
 }
 
 fn parse_f64(v: &serde_json::Value) -> Option<f64> {
@@ -43,10 +41,7 @@ async fn get_sea_forecast() -> Result<SeaForecast, String> {
         .await
         .map_err(|e| e.to_string())?;
 
-    let forecast_date = resp["forecastDate"]
-        .as_str()
-        .unwrap_or("")
-        .to_string();
+    let forecast_date = resp["forecastDate"].as_str().unwrap_or("").to_string();
 
     let data = resp["data"]
         .as_array()
@@ -77,197 +72,173 @@ async fn get_sea_forecast() -> Result<SeaForecast, String> {
     })
 }
 
-/// Core logic: strips all products from inactive/suspended partners.
-/// Operates on an already-open pool so it can be composed into larger flows.
-async fn do_strip_products(pool: &sqlx::SqlitePool) -> Result<u64, String> {
-    let n = sqlx::query(
-        "UPDATE socio_status
-         SET board_store = 0, utilization = 0, surf_lessons = 0
-         WHERE status IN ('inactive', 'suspended')
-           AND (board_store = 1 OR utilization = 1 OR surf_lessons = 1)",
-    )
-    .execute(pool)
-    .await
-    .map_err(|e| e.to_string())?
-    .rows_affected();
-    Ok(n)
+// ── Socios API ────────────────────────────────────────────────────────────────
+
+fn api_client() -> reqwest::Client {
+    reqwest::Client::new()
 }
 
-/// Rule 1 — runs on app startup:
-/// Partners whose `paid_until` is 2+ years in the past are set to inactive,
-/// then rule 2 is applied to all inactive/suspended partners.
-async fn enforce_inactivity_by_omission(app: &tauri::AppHandle) -> Result<(), String> {
-    use sqlx::SqlitePool;
-    use tauri::Manager;
-
-    let db_path = app
-        .path()
-        .app_config_dir()
-        .map_err(|e| e.to_string())?
-        .join("test.db");
-
-    let pool = SqlitePool::connect(&format!("sqlite:{}", db_path.display()))
-        .await
-        .map_err(|e| format!("failed to connect: {e}"))?;
-
-    let inactivated = sqlx::query(
-        "UPDATE socio_status
-         SET status = 'inactive'
-         WHERE status != 'inactive'
-           AND paid_until <= date('now', '-2 years')",
-    )
-    .execute(&pool)
-    .await
-    .map_err(|e| e.to_string())?
-    .rows_affected();
-
-    let stripped = do_strip_products(&pool).await?;
-
-    pool.close().await;
-    info!("[membership] {inactivated} partner(s) set inactive by omission; {stripped} stripped of products");
-    Ok(())
-}
-
-/// Rule 2 — Tauri command callable from the frontend:
-/// Strips all products from any inactive or suspended partner.
-/// Call this after saving a partner whose status is 'inactive' or 'suspended'.
+/// GET /api — health check.
 #[tauri::command]
-async fn strip_inactive_products(app: tauri::AppHandle) -> Result<(), String> {
-    use sqlx::SqlitePool;
-    use tauri::Manager;
-
-    let db_path = app
-        .path()
-        .app_config_dir()
-        .map_err(|e| e.to_string())?
-        .join("test.db");
-
-    let pool = SqlitePool::connect(&format!("sqlite:{}", db_path.display()))
+async fn health_check() -> bool {
+    api_client()
+        .get(format!("{BASE_URL}/api"))
+        .send()
         .await
-        .map_err(|e| format!("failed to connect: {e}"))?;
-
-    let stripped = do_strip_products(&pool).await?;
-
-    pool.close().await;
-    info!("[membership] {stripped} partner(s) stripped of products");
-    Ok(())
+        .map(|r| r.status().is_success())
+        .unwrap_or(false)
 }
 
-/// Populates the database with development seed data.
-/// Resets socios and socio_status to a known state on each call.
-/// Only compiled in debug builds — not available in release.
-#[cfg(debug_assertions)]
+/// GET /api/socios — list with server-side filtering and pagination.
 #[tauri::command]
-async fn seed_dev_data(app: tauri::AppHandle) -> Result<String, String> {
-    use sqlx::SqlitePool;
-    use tauri::Manager;
+async fn list_socios(
+    page: Option<u32>,
+    limit: Option<u32>,
+    search: Option<String>,
+    state: Option<String>,
+    payment: Option<String>,
+    board_store: Option<String>,
+    utilization: Option<String>,
+    surf_lessons: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let mut query: Vec<(&str, String)> = vec![];
 
-    let db_path = app
-        .path()
-        .app_config_dir()
-        .map_err(|e| e.to_string())?
-        .join("test.db");
+    if let Some(p) = page { query.push(("page", p.to_string())); }
+    if let Some(l) = limit { query.push(("limit", l.to_string())); }
+    if let Some(ref s) = search { if !s.is_empty() { query.push(("search", s.clone())); } }
+    if let Some(ref s) = state { query.push(("state", s.clone())); }
+    if let Some(ref p) = payment { query.push(("payment", p.clone())); }
+    if let Some(ref b) = board_store { query.push(("board_store", b.clone())); }
+    if let Some(ref u) = utilization { query.push(("utilization", u.clone())); }
+    if let Some(ref s) = surf_lessons { query.push(("surf_lessons", s.clone())); }
 
-    let db_url = format!("sqlite:{}", db_path.display());
-    let pool = SqlitePool::connect(&db_url)
+    api_client()
+        .get(format!("{BASE_URL}/api/socios"))
+        .query(&query)
+        .send()
         .await
-        .map_err(|e| format!("failed to connect: {e}"))?;
+        .map_err(|e| e.to_string())?
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())
+}
 
-    let seed_sql = include_str!("../db/seed.sql");
+/// GET /api/socios/:id — single socio with status and monthly payments.
+#[tauri::command]
+async fn get_socio(id: i64) -> Result<serde_json::Value, String> {
+    let resp = api_client()
+        .get(format!("{BASE_URL}/api/socios/{id}"))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
 
-    // sqlx execute doesn't support multiple statements — split on ';' and run each.
-    // Strip comment lines before deciding whether a chunk has real SQL to execute.
-    for statement in seed_sql.split(';') {
-        let sql: String = statement
-            .lines()
-            .filter(|l| !l.trim().starts_with("--"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        let sql = sql.trim();
-        if sql.is_empty() {
-            continue;
-        }
-        sqlx::query(sql)
-            .execute(&pool)
-            .await
-            .map_err(|e| format!("seed failed on:\n{sql}\n\nError: {e}"))?;
+    if resp.status() == reqwest::StatusCode::NOT_FOUND {
+        return Err("Sócio não encontrado".into());
+    }
+    if !resp.status().is_success() {
+        return Err(format!("Erro ao obter sócio: {}", resp.status()));
     }
 
-    pool.close().await;
-    info!("[seed] dev data loaded from seed.sql");
-    Ok("Seed data loaded successfully.".into())
+    resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
 }
 
-/// Deletes all socios (cascade removes socio_status) and resets autoincrement counters.
-/// Only compiled in debug builds — not available in release.
-#[cfg(debug_assertions)]
+/// POST /api/socios then PATCH for status fields — creates a new socio.
 #[tauri::command]
-async fn purge_dev_data(app: tauri::AppHandle) -> Result<String, String> {
-    use sqlx::SqlitePool;
-    use tauri::Manager;
+async fn create_socio(body: serde_json::Value) -> Result<serde_json::Value, String> {
+    let client = api_client();
 
-    let db_path = app
-        .path()
-        .app_config_dir()
-        .map_err(|e| e.to_string())?
-        .join("test.db");
+    // Step 1 — create the socio record (name + email required, rest optional)
+    let socio_body = serde_json::json!({
+        "name":        body["name"],
+        "email":       body["email"],
+        "phone":       body["phone"],
+        "address":     body["address"],
+        "ncc":         body["ncc"],
+        "nif":         body["nif"],
+        "birth_date":  body["birth_date"],
+        "postal_code": body["postal_code"],
+        "observacoes": body["observacoes"],
+    });
 
-    let pool = SqlitePool::connect(&format!("sqlite:{}", db_path.display()))
-        .await
-        .map_err(|e| format!("failed to connect: {e}"))?;
-
-    sqlx::query("DELETE FROM socio")
-        .execute(&pool)
+    let create_resp = client
+        .post(format!("{BASE_URL}/api/socios"))
+        .json(&socio_body)
+        .send()
         .await
         .map_err(|e| e.to_string())?;
 
-    sqlx::query("DELETE FROM sqlite_sequence WHERE name IN ('socio', 'socio_status')")
-        .execute(&pool)
+    if create_resp.status() == reqwest::StatusCode::CONFLICT {
+        return Err("Email já registado".into());
+    }
+    if !create_resp.status().is_success() {
+        let status = create_resp.status();
+        let text = create_resp.text().await.unwrap_or_default();
+        return Err(format!("Erro ao criar sócio ({status}): {text}"));
+    }
+
+    let created: serde_json::Value = create_resp.json().await.map_err(|e| e.to_string())?;
+    let id = created["id"]
+        .as_i64()
+        .ok_or_else(|| "ID não encontrado na resposta do servidor".to_string())?;
+
+    // Step 2 — patch with status / membership fields
+    let status_body = serde_json::json!({
+        "joined_at":    body["joined_at"],
+        "status":       body["status"],
+        "paid_until":   body["paid_until"],
+        "board_store":  body["board_store"],
+        "utilization":  body["utilization"],
+        "surf_lessons": body["surf_lessons"],
+    });
+
+    let patch_resp = client
+        .patch(format!("{BASE_URL}/api/socios/{id}"))
+        .json(&status_body)
+        .send()
         .await
         .map_err(|e| e.to_string())?;
 
-    pool.close().await;
-    info!("[purge] all socios deleted");
-    Ok("Purge completed.".into())
+    if !patch_resp.status().is_success() {
+        let status = patch_resp.status();
+        let text = patch_resp.text().await.unwrap_or_default();
+        return Err(format!("Sócio criado mas erro ao definir estado ({status}): {text}"));
+    }
+
+    info!("[socios] created socio id={id}");
+    patch_resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
 }
+
+/// PATCH /api/socios/:id — partial update (fields, status, monthly payments).
+#[tauri::command]
+async fn update_socio(id: i64, body: serde_json::Value) -> Result<serde_json::Value, String> {
+    let resp = api_client()
+        .patch(format!("{BASE_URL}/api/socios/{id}"))
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if resp.status() == reqwest::StatusCode::NOT_FOUND {
+        return Err("Sócio não encontrado".into());
+    }
+    if resp.status().as_u16() == 422 {
+        let text = resp.text().await.unwrap_or_default();
+        return Err(format!("Pedido inválido: {text}"));
+    }
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(format!("Erro ao atualizar sócio ({status}): {text}"));
+    }
+
+    info!("[socios] updated socio id={id}");
+    resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+}
+
+// ── App entry ─────────────────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-
-    // this is the migration for my intended db structure
-    let migrations = vec![
-        Migration {
-            version: 1,
-            description: "creates socio and socio_status tables",
-            sql: include_str!("../db/init.sql"),
-            kind: MigrationKind::Up,
-        },
-        Migration {
-            version: 2,
-            description: "replace nss with ncc, nif, birth_date, postal_code",
-            sql: include_str!("../db/migrate_002.sql"),
-            kind: MigrationKind::Up,
-        },
-        Migration {
-            version: 3,
-            description: "add utilization and surf_lessons products to socio_status",
-            sql: include_str!("../db/migrate_003.sql"),
-            kind: MigrationKind::Up,
-        },
-        Migration {
-            version: 4,
-            description: "replace paid_until date fields with monthly_payments table",
-            sql: include_str!("../db/migrate_004.sql"),
-            kind: MigrationKind::Up,
-        },
-        Migration {
-            version: 5,
-            description: "add observacoes field to socio",
-            sql: include_str!("../db/migrate_005.sql"),
-            kind: MigrationKind::Up,
-        },
-    ];
-
     tauri::Builder::default()
         .plugin(
             tauri_plugin_log::Builder::new()
@@ -279,30 +250,16 @@ pub fn run() {
                 ))
                 .build(),
         )
-        .plugin(
-            tauri_plugin_sql::Builder::default()
-                .add_migrations("sqlite:test.db", migrations)
-                .build()
-        )
         .plugin(tauri_plugin_opener::init())
-        .setup(|app| {
-            let handle = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                if let Err(e) = enforce_inactivity_by_omission(&handle).await {
-                    error!("[inactivity] {e}");
-                }
-            });
-            Ok(())
-        })
         .invoke_handler(tauri::generate_handler![
             greet,
             log_to_terminal,
             get_sea_forecast,
-            strip_inactive_products,
-            #[cfg(debug_assertions)]
-            seed_dev_data,
-            #[cfg(debug_assertions)]
-            purge_dev_data,
+            health_check,
+            list_socios,
+            get_socio,
+            create_socio,
+            update_socio,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
