@@ -1,7 +1,7 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use log::info;
+use log::{info, warn};
 
 fn base_url() -> String {
     let host = std::env::var("API_HOST").unwrap_or_else(|_| "localhost".into());
@@ -246,15 +246,24 @@ pub fn run() {
     // Load .env from the user's config directory (~/.config/isurf-mgmt-alpha/.env on Linux)
     if let Some(config_dir) = dirs::config_dir() {
         let env_path = config_dir.join("isurf-mgmt-alpha").join(".env");
-        let _ = dotenvy::from_path_override(env_path); // silently ignore if file doesn't exist
+        match dotenvy::from_path_override(&env_path) {
+            Ok(_) => info!("[config] loaded env from {}", env_path.display()),
+            Err(e) => warn!("[config] could not load env from {}: {}", env_path.display(), e),
+        }
+    } else {
+        warn!("[config] could not determine config directory; using default API_HOST/API_PORT");
     }
+    info!("[config] API base URL: {}", base_url());
 
     tauri::Builder::default()
         .plugin(
             tauri_plugin_log::Builder::new()
                 .target(tauri_plugin_log::Target::new(
                     tauri_plugin_log::TargetKind::Folder {
-                        path: std::path::PathBuf::from(env!("ISURF_LOG_DIR")),
+                        path: dirs::data_local_dir()
+                            .unwrap_or_else(std::env::temp_dir)
+                            .join("isurf-mgmt-alpha")
+                            .join("logs"),
                         file_name: Some("isurf-mgmt".to_string()),
                     },
                 ))

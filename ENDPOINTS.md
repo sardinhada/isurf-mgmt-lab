@@ -1,6 +1,6 @@
 # API Endpoints
 
-**Base URL:** `http://localhost:3000`
+**Base URL:** configurable via `API_HOST` / `API_PORT` (see [README](README.md)); defaults to `http://localhost:3000`
 
 ---
 
