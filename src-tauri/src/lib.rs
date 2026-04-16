@@ -247,13 +247,40 @@ async fn update_socio(id: i64, body: serde_json::Value) -> Result<serde_json::Va
     resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
 }
 
+// ── Config commands ───────────────────────────────────────────────────────────
+
+fn app_config_dir() -> Option<std::path::PathBuf> {
+    dirs::config_dir().map(|d| d.join("Socios ADMS"))
+}
+
+/// Returns true if the .env config file already exists.
+#[tauri::command]
+fn is_configured() -> bool {
+    app_config_dir()
+        .map(|d| d.join(".env").exists())
+        .unwrap_or(false)
+}
+
+/// Writes the .env file and applies the values to the current process immediately.
+#[tauri::command]
+fn save_config(host: String, port: String) -> Result<(), String> {
+    let dir = app_config_dir().ok_or("Não foi possível determinar o diretório de configuração")?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let content = format!("API_HOST={}\nAPI_PORT={}\n", host, port);
+    std::fs::write(dir.join(".env"), &content).map_err(|e| e.to_string())?;
+    std::env::set_var("API_HOST", &host);
+    std::env::set_var("API_PORT", &port);
+    info!("[config] saved config — API base URL: {}", base_url());
+    Ok(())
+}
+
 // ── App entry ─────────────────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Load .env from the user's config directory (~/.config/isurf-mgmt-alpha/.env on Linux)
+    // Load .env from the user's config directory (~/.config/Socios ADMS/.env on Linux)
     if let Some(config_dir) = dirs::config_dir() {
-        let env_path = config_dir.join("isurf-mgmt-alpha").join(".env");
+        let env_path = config_dir.join("Socios ADMS").join(".env");
         match dotenvy::from_path_override(&env_path) {
             Ok(_) => info!("[config] loaded env from {}", env_path.display()),
             Err(e) => warn!("[config] could not load env from {}: {}", env_path.display(), e),
@@ -270,7 +297,7 @@ pub fn run() {
                     tauri_plugin_log::TargetKind::Folder {
                         path: dirs::data_local_dir()
                             .unwrap_or_else(std::env::temp_dir)
-                            .join("isurf-mgmt-alpha")
+                            .join("Socios ADMS")
                             .join("logs"),
                         file_name: Some("isurf-mgmt".to_string()),
                     },
@@ -288,6 +315,8 @@ pub fn run() {
             get_socio,
             create_socio,
             update_socio,
+            is_configured,
+            save_config,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

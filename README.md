@@ -16,13 +16,56 @@ On Linux, if you hit WebKit rendering issues:
 GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 npm run tauri dev
 ```
 
-## Building
+## Building installers
+
+### Windows (NSIS installer)
 
 ```bash
-npm run tauri build
+npm run tauri build -- --target nsis
 ```
 
-Produces a `.deb` package under `src-tauri/target/release/bundle/deb/`.
+Produces a `.exe` installer under `src-tauri/target/release/bundle/nsis/`.
+
+To uninstall: use **Add or Remove Programs** in Windows Settings, or run the uninstaller at `%LOCALAPPDATA%\Socios ADMS\uninstall.exe`.
+
+---
+
+### macOS (DMG)
+
+```bash
+npm run tauri build -- --target dmg
+```
+
+Produces a `.dmg` under `src-tauri/target/release/bundle/dmg/`. Open the DMG and drag the app to `/Applications`.
+
+To uninstall: drag **Socios ADMS.app** from `/Applications` to the Trash. To also remove config and logs, delete:
+- `~/Library/Application Support/Socios ADMS/`
+
+---
+
+### Linux (deb)
+
+```bash
+npm run tauri build -- --target deb
+```
+
+Produces a `.deb` under `src-tauri/target/release/bundle/deb/`.
+
+Install:
+```bash
+sudo dpkg -i socios-adms_*.deb
+```
+
+To uninstall:
+```bash
+sudo dpkg -r socios-adms
+```
+
+To also remove config and logs, delete:
+- `~/.config/Socios ADMS/`
+- `~/.local/share/Socios ADMS/`
+
+---
 
 ## Runtime configuration
 
@@ -31,9 +74,9 @@ The app reads its config from a `.env` file in the user's config directory.
 
 | Platform | Path |
 |---|---|
-| Linux | `~/.config/isurf-mgmt-alpha/.env` |
-| macOS | `~/Library/Application Support/isurf-mgmt-alpha/.env` |
-| Windows | `%APPDATA%\isurf-mgmt-alpha\.env` |
+| Linux | `~/.config/Socios ADMS/.env` |
+| macOS | `~/Library/Application Support/Socios ADMS/.env` |
+| Windows | `%APPDATA%\Socios ADMS\.env` |
 
 ### Variables
 
@@ -53,9 +96,9 @@ API_PORT=3000
 
 | Platform | Path |
 |---|---|
-| Linux | `~/.local/share/isurf-mgmt-alpha/logs/` |
-| macOS | `~/Library/Application Support/isurf-mgmt-alpha/logs/` |
-| Windows | `%LOCALAPPDATA%\isurf-mgmt-alpha\logs\` |
+| Linux | `~/.local/share/Socios ADMS/logs/` |
+| macOS | `~/Library/Application Support/Socios ADMS/logs/` |
+| Windows | `%LOCALAPPDATA%\Socios ADMS\logs\` |
 
 ## References
 
