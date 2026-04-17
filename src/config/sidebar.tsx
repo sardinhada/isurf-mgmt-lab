@@ -27,7 +27,7 @@ export const sidebarItems: SidebarItem[] = [
   {
     text: 'Socios',
     icon: <HailIcon />,
-    path: '/artists',
+    path: '/socios',
     component: <Socios />,
   },
   {
