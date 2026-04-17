@@ -92,9 +92,9 @@ export const Socios = () => {
           search: search.trim() || undefined,
           state: filterStatus !== 'all' ? filterStatus : undefined,
           payment: filterPayment !== 'all' ? filterPayment : undefined,
-          board_store: filterGuardaria !== 'all' ? filterGuardaria : undefined,
+          boardStore: filterGuardaria !== 'all' ? filterGuardaria : undefined,
           utilization: filterUtilization !== 'all' ? filterUtilization : undefined,
-          surf_lessons: filterSurfLessons !== 'all' ? filterSurfLessons : undefined,
+          surfLessons: filterSurfLessons !== 'all' ? filterSurfLessons : undefined,
         },
       );
       setSocios(result.data.socios);
