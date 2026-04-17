@@ -38,6 +38,7 @@ fn parse_f64(v: &serde_json::Value) -> Option<f64> {
 async fn get_sea_forecast() -> Result<SeaForecast, String> {
     let url = "https://api.ipma.pt/open-data/forecast/oceanography/daily/hp-daily-sea-forecast-day0.json";
 
+    info!("[api] GET {}", url);
     let resp: serde_json::Value = reqwest::get(url)
         .await
         .map_err(|e| e.to_string())?
@@ -93,8 +94,10 @@ fn get_api_base() -> String {
 /// GET /api — health check.
 #[tauri::command]
 async fn health_check() -> bool {
+    let url = format!("{}/api", base_url());
+    info!("[api] GET {}", url);
     api_client()
-        .get(format!("{}/api", base_url()))
+        .get(url)
         .send()
         .await
         .map(|r| r.status().is_success())
@@ -124,10 +127,15 @@ async fn list_socios(
     if let Some(ref u) = utilization { query.push(("utilization", u.clone())); }
     if let Some(ref s) = surf_lessons { query.push(("surf_lessons", s.clone())); }
 
-    api_client()
+    let client = api_client();
+    let req = client
         .get(format!("{}/api/socios", base_url()))
         .query(&query)
-        .send()
+        .build()
+        .map_err(|e| e.to_string())?;
+    info!("[api] GET {}", req.url());
+    client
+        .execute(req)
         .await
         .map_err(|e| e.to_string())?
         .json::<serde_json::Value>()
@@ -138,8 +146,10 @@ async fn list_socios(
 /// GET /api/socios/:id — single socio with status and monthly payments.
 #[tauri::command]
 async fn get_socio(id: i64) -> Result<serde_json::Value, String> {
+    let url = format!("{}/api/socios/{}", base_url(), id);
+    info!("[api] GET {}", url);
     let resp = api_client()
-        .get(format!("{}/api/socios/{}", base_url(), id))
+        .get(url)
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -172,8 +182,10 @@ async fn create_socio(body: serde_json::Value) -> Result<serde_json::Value, Stri
         "observacoes": body["observacoes"],
     });
 
+    let post_url = format!("{}/api/socios", base_url());
+    info!("[api] POST {}", post_url);
     let create_resp = client
-        .post(format!("{}/api/socios", base_url()))
+        .post(post_url)
         .json(&socio_body)
         .send()
         .await
@@ -203,8 +215,10 @@ async fn create_socio(body: serde_json::Value) -> Result<serde_json::Value, Stri
         "surf_lessons": body["surf_lessons"],
     });
 
+    let patch_url = format!("{}/api/socios/{}", base_url(), id);
+    info!("[api] PATCH {}", patch_url);
     let patch_resp = client
-        .patch(format!("{}/api/socios/{}", base_url(), id))
+        .patch(patch_url)
         .json(&status_body)
         .send()
         .await
@@ -223,8 +237,10 @@ async fn create_socio(body: serde_json::Value) -> Result<serde_json::Value, Stri
 /// PATCH /api/socios/:id — partial update (fields, status, monthly payments).
 #[tauri::command]
 async fn update_socio(id: i64, body: serde_json::Value) -> Result<serde_json::Value, String> {
+    let url = format!("{}/api/socios/{}", base_url(), id);
+    info!("[api] PATCH {}", url);
     let resp = api_client()
-        .patch(format!("{}/api/socios/{}", base_url(), id))
+        .patch(url)
         .json(&body)
         .send()
         .await
