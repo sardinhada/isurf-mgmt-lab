@@ -3,6 +3,7 @@ export type SocioStatus = 'active' | 'inactive' | 'suspended';
 /** Flat socio row returned by GET /api/socios (status fields merged in) */
 export interface Socio {
   id: number;
+  adms_id: number | null;
   name: string;
   email: string;
   phone: string | null;
@@ -21,7 +22,7 @@ export interface Socio {
   surf_lessons: boolean | null;
 }
 
-export type MonthlyPaymentProduct = 'board_store' | 'utilization';
+export type MonthlyPaymentProduct = 'board_store' | 'utilization' | 'surf_lessons';
 
 /** Monthly payment record as returned by the API */
 export interface MonthlyPayment {
@@ -49,6 +50,7 @@ export interface SocioDetail {
 export interface SocioFormValues {
   name: string;
   email: string;
+  adms_id: string;
   phone: string;
   address: string;
   observacoes: string;

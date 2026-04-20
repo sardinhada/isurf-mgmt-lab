@@ -3,10 +3,13 @@ import { invoke } from '@tauri-apps/api/core';
 import AddIcon from '@mui/icons-material/Add';
 import CloseIcon from '@mui/icons-material/Close';
 import EditIcon from '@mui/icons-material/Edit';
+import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import SearchIcon from '@mui/icons-material/Search';
 import {
+  Alert,
   Box,
   Button,
+  Checkbox,
   Chip,
   CircularProgress,
   Dialog,
@@ -15,6 +18,7 @@ import {
   IconButton,
   InputAdornment,
   Paper,
+  Snackbar,
   Table,
   TableBody,
   TableCell,
@@ -47,6 +51,7 @@ type DialogState = { mode: 'create' } | { mode: 'edit'; socio: Socio } | null;
 const socioToFormValues = (s: Socio): SocioFormValues => ({
   name: s.name,
   email: s.email,
+  adms_id: s.adms_id != null ? String(s.adms_id) : '',
   phone: s.phone ?? '',
   address: s.address ?? '',
   observacoes: s.observacoes ?? '',
@@ -80,6 +85,13 @@ export const Socios = () => {
   const [filterSurfLessons, setFilterSurfLessons] = useState<'all' | 'yes' | 'no'>('all');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [exportError, setExportError] = useState(false);
+
+  const handleExport = () => {
+    if (selectedIds.size === 0) { setExportError(true); return; }
+    // TODO: implement export
+  };
 
   const fetchSocios = useCallback(async () => {
     setLoading(true);
@@ -124,6 +136,7 @@ export const Socios = () => {
         body: {
           name: values.name,
           email: values.email,
+          adms_id: values.adms_id ? Number(values.adms_id) : null,
           phone: values.phone || null,
           address: values.address || null,
           observacoes: values.observacoes || null,
@@ -198,14 +211,34 @@ export const Socios = () => {
         <Typography variant="h5" fontWeight={600}>
           Sócios
         </Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => setDialog({ mode: 'create' })}
-        >
-          Novo Sócio
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button
+            variant="outlined"
+            startIcon={<FileDownloadIcon />}
+            onClick={handleExport}
+          >
+            Exportar{selectedIds.size > 0 ? ` (${selectedIds.size})` : ''}
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => setDialog({ mode: 'create' })}
+          >
+            Novo Sócio
+          </Button>
+        </Box>
       </Box>
+
+      <Snackbar
+        open={exportError}
+        autoHideDuration={4000}
+        onClose={() => setExportError(false)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert severity="warning" onClose={() => setExportError(false)} variant="filled">
+          Precisas de pelo menos um sócio para exportar
+        </Alert>
+      </Snackbar>
 
       {/* ── Search + Filters ──────────────────────────────────── */}
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mb: 2, alignItems: 'center' }}>
@@ -283,7 +316,7 @@ export const Socios = () => {
         </Box>
 
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Typography variant="caption" color="text.secondary" noWrap>Aulas de Surf</Typography>
+          <Typography variant="caption" color="text.secondary" noWrap>Formação</Typography>
           <ToggleButtonGroup
             size="small"
             exclusive
@@ -295,6 +328,25 @@ export const Socios = () => {
             <ToggleButton value="no">Não</ToggleButton>
           </ToggleButtonGroup>
         </Box>
+
+        {(search || filterStatus !== 'all' || filterPayment !== 'all' || filterGuardaria !== 'all' || filterUtilization !== 'all' || filterSurfLessons !== 'all') && (
+          <Button
+            size="small"
+            variant="outlined"
+            color="inherit"
+            onClick={() => {
+              setSearch('');
+              setFilterStatus('all');
+              setFilterPayment('all');
+              setFilterGuardaria('all');
+              setFilterUtilization('all');
+              setFilterSurfLessons('all');
+              resetPage();
+            }}
+          >
+            Limpar filtros
+          </Button>
+        )}
       </Box>
 
       {/* ── Table ─────────────────────────────────────────────── */}
@@ -308,6 +360,21 @@ export const Socios = () => {
             <Table size="small">
               <TableHead>
                 <TableRow>
+                  <TableCell padding="checkbox">
+                    <Checkbox
+                      size="small"
+                      checked={socios.length > 0 && socios.every(s => selectedIds.has(s.id))}
+                      indeterminate={socios.some(s => selectedIds.has(s.id)) && !socios.every(s => selectedIds.has(s.id))}
+                      onChange={(e) => {
+                        setSelectedIds(prev => {
+                          const next = new Set(prev);
+                          if (e.target.checked) socios.forEach(s => next.add(s.id));
+                          else socios.forEach(s => next.delete(s.id));
+                          return next;
+                        });
+                      }}
+                    />
+                  </TableCell>
                   <TableCell>Nome</TableCell>
                   <TableCell>Email</TableCell>
                   <TableCell>Telefone</TableCell>
@@ -332,7 +399,21 @@ export const Socios = () => {
                   </TableRow>
                 ) : (
                   socios.map((s) => (
-                    <TableRow key={s.id} hover>
+                    <TableRow key={s.id} hover selected={selectedIds.has(s.id)}>
+                      <TableCell padding="checkbox">
+                        <Checkbox
+                          size="small"
+                          checked={selectedIds.has(s.id)}
+                          onChange={(e) => {
+                            setSelectedIds(prev => {
+                              const next = new Set(prev);
+                              if (e.target.checked) next.add(s.id);
+                              else next.delete(s.id);
+                              return next;
+                            });
+                          }}
+                        />
+                      </TableCell>
                       <TableCell>{s.name}</TableCell>
                       <TableCell>{s.email}</TableCell>
                       <TableCell>{s.phone ?? '—'}</TableCell>
@@ -356,12 +437,12 @@ export const Socios = () => {
                           />
                         ) : null}
                       </TableCell>
-                      <TableCell>{s.paid_until ?? '—'}</TableCell>
+                      <TableCell>{s.paid_until ? s.paid_until.substring(0, 4) : '—'}</TableCell>
                       <TableCell>
                         <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
                           {s.board_store ? <Chip label="Guardaria" size="small" variant="outlined" /> : null}
                           {s.utilization ? <Chip label="Utilização" size="small" variant="outlined" /> : null}
-                          {s.surf_lessons ? <Chip label="Aulas de Surf" size="small" variant="outlined" /> : null}
+                          {s.surf_lessons ? <Chip label="Formação" size="small" variant="outlined" /> : null}
                           {!s.board_store && !s.utilization && !s.surf_lessons ? <span style={{ color: 'var(--mui-palette-text-disabled)' }}>—</span> : null}
                         </Box>
                       </TableCell>
@@ -418,6 +499,7 @@ export const Socios = () => {
             <SocioForm
               key={dialog.socio.id}
               partnerId={dialog.socio.id}
+              admsId={dialog.socio.adms_id}
               initialValues={socioToFormValues(dialog.socio)}
               onSubmit={handleEdit}
               onCancel={() => setDialog(null)}

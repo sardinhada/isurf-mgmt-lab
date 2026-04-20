@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS socio_status (
 
 CREATE TABLE IF NOT EXISTS monthly_payments (
     partner_id  INTEGER NOT NULL,
-    product     TEXT    NOT NULL CHECK(product IN ('board_store', 'utilization')),
+    product     TEXT    NOT NULL CHECK(product IN ('board_store', 'utilization', 'surf_lessons')),
     year        INTEGER NOT NULL,
     month       INTEGER NOT NULL CHECK(month BETWEEN 1 AND 12),
     paid        INTEGER NOT NULL DEFAULT 0,

@@ -3,9 +3,11 @@ import type { SelectChangeEvent } from '@mui/material';
 import {
   Box,
   Button,
+  Chip,
   Divider,
   FormControl,
   FormControlLabel,
+  FormHelperText,
   InputLabel,
   MenuItem,
   Select,
@@ -18,14 +20,12 @@ import { MonthlyPaymentsEditor } from './MonthlyPaymentsEditor';
 import type { SocioFormValues, SocioStatus } from '../../types/socio';
 
 const today = () => new Date().toISOString().split('T')[0];
-const nextYear = () => {
-  const d = new Date();
-  d.setFullYear(d.getFullYear() + 1);
-  return d.toISOString().split('T')[0];
-};
+const currentYearEnd = () => `${new Date().getFullYear()}-12-31`;
+const YEAR_OPTIONS = Array.from({ length: 8 }, (_, i) => new Date().getFullYear() - 5 + i);
 const DEFAULT_VALUES: SocioFormValues = {
   name: '',
   email: '',
+  adms_id: '',
   phone: '',
   address: '',
   observacoes: '',
@@ -35,7 +35,7 @@ const DEFAULT_VALUES: SocioFormValues = {
   postal_code: '',
   joined_at: today(),
   status: 'active',
-  paid_until: nextYear(),
+  paid_until: currentYearEnd(),
   board_store: false,
   utilization: false,
   surf_lessons: false,
@@ -45,6 +45,7 @@ type FormErrors = Partial<Record<keyof SocioFormValues, string>>;
 
 interface Props {
   partnerId?: number; // provided when editing — enables monthly payment editors
+  admsId?: number | null;
   initialValues?: Partial<SocioFormValues>;
   onSubmit: (values: SocioFormValues) => void;
   onCancel: () => void;
@@ -54,6 +55,7 @@ interface Props {
 
 export const SocioForm = ({
   partnerId,
+  admsId,
   initialValues,
   onSubmit,
   onCancel,
@@ -90,9 +92,14 @@ export const SocioForm = ({
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
       {/* ── Dados Pessoais ──────────────────────────────────── */}
       <Box>
-        <Typography variant="overline" color="text.secondary">
-          Dados Pessoais
-        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography variant="overline" color="text.secondary">
+            Dados Pessoais
+          </Typography>
+          {admsId != null && (
+            <Chip label={`ADMS #${admsId}`} size="small" variant="outlined" />
+          )}
+        </Box>
 
         <Stack spacing={2} sx={{ mt: 1 }}>
           <TextField
@@ -134,7 +141,25 @@ export const SocioForm = ({
               value={values.birth_date}
               onChange={(e) => set('birth_date', e.target.value)}
               disabled={disabled}
-              slotProps={{ inputLabel: { shrink: true } }}
+              slotProps={{
+                inputLabel: { shrink: true },
+                input: (() => {
+                  if (!values.birth_date) return {};
+                  const birth = new Date(values.birth_date);
+                  const now = new Date();
+                  let age = now.getFullYear() - birth.getFullYear();
+                  const m = now.getMonth() - birth.getMonth();
+                  if (m < 0 || (m === 0 && now.getDate() < birth.getDate())) age--;
+                  if (age >= 18) return {};
+                  return {
+                    endAdornment: (
+                      <Typography variant="caption" color="error" fontWeight="bold" sx={{ whiteSpace: 'nowrap' }}>
+                        {age}a
+                      </Typography>
+                    ),
+                  };
+                })(),
+              }}
               sx={{ flex: 1 }}
             />
           </Stack>
@@ -156,6 +181,17 @@ export const SocioForm = ({
               disabled={disabled}
               sx={{ flex: 1 }}
             />
+            {!partnerId && (
+              <TextField
+                label="Nº ADMS"
+                size="small"
+                type="number"
+                value={values.adms_id}
+                onChange={(e) => set('adms_id', e.target.value)}
+                disabled={disabled}
+                sx={{ flex: 1 }}
+              />
+            )}
           </Stack>
 
           <Stack direction="row" spacing={2}>
@@ -230,18 +266,41 @@ export const SocioForm = ({
             />
           </Stack>
 
-          <TextField
-            label="Pago Até"
-            required
-            type="date"
-            size="small"
-            value={values.paid_until}
-            onChange={(e) => set('paid_until', e.target.value)}
-            error={!!errors.paid_until}
-            helperText={errors.paid_until}
-            disabled={disabled}
-            slotProps={{ inputLabel: { shrink: true } }}
+          <FormControl size="small" required error={!!errors.paid_until} disabled={disabled}>
+            <InputLabel shrink>Pago Até (Ano)</InputLabel>
+            <Select
+              value={values.paid_until ? values.paid_until.substring(0, 4) : ''}
+              onChange={(e) => set('paid_until', `${e.target.value}-12-31`)}
+              label="Pago Até (Ano)"
+              notched
+            >
+              {YEAR_OPTIONS.map((y) => (
+                <MenuItem key={y} value={String(y)}>{y}</MenuItem>
+              ))}
+            </Select>
+            {errors.paid_until && <FormHelperText>{errors.paid_until}</FormHelperText>}
+          </FormControl>
+
+          <FormControlLabel
+            control={
+              <Switch
+                checked={values.surf_lessons}
+                onChange={(e) => set('surf_lessons', e.target.checked)}
+                disabled={disabled}
+              />
+            }
+            label="Formação"
           />
+
+          {partnerId && values.surf_lessons && (
+            <MonthlyPaymentsEditor
+              partnerId={partnerId}
+              product="surf_lessons"
+              label="Pagamentos — Formação"
+            />
+          )}
+
+          <Divider />
 
           <FormControlLabel
             control={
@@ -280,17 +339,6 @@ export const SocioForm = ({
               label="Pagamentos — Utilização"
             />
           )}
-
-          <FormControlLabel
-            control={
-              <Switch
-                checked={values.surf_lessons}
-                onChange={(e) => set('surf_lessons', e.target.checked)}
-                disabled={disabled}
-              />
-            }
-            label="Aulas de Surf"
-          />
         </Stack>
       </Box>
 

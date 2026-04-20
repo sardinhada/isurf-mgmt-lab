@@ -1,11 +1,7 @@
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-// import ExploreIcon from '@mui/icons-material/Explore';
-// import ThermostatIcon from '@mui/icons-material/Thermostat';
-// import TimerIcon from '@mui/icons-material/Timer';
-// import WavesIcon from '@mui/icons-material/Waves';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
-import { Alert, Box, Card, CardContent, Chip, Divider, Typography } from '@mui/material';
+import { Alert, Box, Card, CardContent, Chip, Divider, Skeleton, Typography } from '@mui/material';
 
 // interface SeaForecast {
 //   forecast_date: string;
@@ -65,6 +61,45 @@ const getGreeting = () => {
 //   </Box>
 // );
 
+interface SocioStats { total: number; active: number; inactive: number; due: number; }
+
+const StatBox = ({ label, value, color }: { label: string; value: number | null; color?: string }) => (
+  <Box sx={{ flex: 1, textAlign: 'center' }}>
+    {value === null
+      ? <Skeleton variant="text" sx={{ fontSize: '2rem', mx: 'auto', width: 48 }} />
+      : <Typography variant="h4" fontWeight={700} color={color ?? 'text.primary'}>{value}</Typography>
+    }
+    <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 1 }}>
+      {label}
+    </Typography>
+  </Box>
+);
+
+const SocioStatsCard = () => {
+  const [stats, setStats] = useState<SocioStats | null>(null);
+
+  useEffect(() => {
+    invoke<SocioStats>('get_socios_stats').then(setStats).catch(() => {});
+  }, []);
+
+  return (
+    <Card elevation={0} sx={{ maxWidth: 520, borderRadius: 3, border: '1px solid', borderColor: 'divider' }}>
+      <CardContent sx={{ p: 3, '&:last-child': { pb: 3 } }}>
+        <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 2 }}>
+          Sócios
+        </Typography>
+        <Divider sx={{ my: 1.5 }} />
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          <StatBox label="Total" value={stats?.total ?? null} />
+          <StatBox label="Ativos" value={stats?.active ?? null} color="success.main" />
+          <StatBox label="Inativos" value={stats?.inactive ?? null} color="text.secondary" />
+          <StatBox label="Vencidos" value={stats?.due ?? null} color="error.main" />
+        </Box>
+      </CardContent>
+    </Card>
+  );
+};
+
 type ApiStatus = 'operational' | 'down' | 'checking';
 
 const statusColor = (s: ApiStatus) =>
@@ -103,7 +138,7 @@ const ApiStatusCard = () => {
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
           <WarningAmberIcon fontSize="small" color={degraded ? 'warning' : 'success'} />
           <Typography variant="overline" sx={{ letterSpacing: 2, lineHeight: 1 }}>
-            Estado das APIs
+            Estado do Servidor
           </Typography>
         </Box>
 
@@ -152,6 +187,11 @@ export const Dashboard = () => {
         <Typography variant="body1" color="text.secondary">
           {formatDate()}
         </Typography>
+      </Box>
+
+      {/* ── Socio stats ──────────────────────────────────────── */}
+      <Box sx={{ mb: 3 }}>
+        <SocioStatsCard />
       </Box>
 
       {/* ── API status card ───────────────────────────────────── */}

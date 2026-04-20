@@ -143,6 +143,21 @@ async fn list_socios(
         .map_err(|e| e.to_string())
 }
 
+/// GET /api/socios/stats — socio counts.
+#[tauri::command]
+async fn get_socios_stats() -> Result<serde_json::Value, String> {
+    let url = format!("{}/api/socios/stats", base_url());
+    info!("[api] GET {}", url);
+    api_client()
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// GET /api/socios/:id — single socio with status and monthly payments.
 #[tauri::command]
 async fn get_socio(id: i64) -> Result<serde_json::Value, String> {
@@ -328,6 +343,7 @@ pub fn run() {
             get_api_base,
             health_check,
             list_socios,
+            get_socios_stats,
             get_socio,
             create_socio,
             update_socio,
