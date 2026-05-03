@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use log::{info, warn};
+use tauri_plugin_opener::OpenerExt;
 
 fn base_url() -> String {
     let host = std::env::var("API_HOST").unwrap_or_else(|_| "localhost".into());
@@ -278,6 +279,100 @@ async fn update_socio(id: i64, body: serde_json::Value) -> Result<serde_json::Va
     resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
 }
 
+fn save_csv_to_downloads(app: &tauri::AppHandle, csv_bytes: &[u8]) -> Result<String, String> {
+    use std::io::Write;
+
+    let downloads = dirs::download_dir()
+        .ok_or_else(|| "Pasta de downloads não encontrada".to_string())?;
+
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let path = downloads.join(format!("socios_{}.csv", ts));
+
+    let mut file = std::fs::File::create(&path).map_err(|e| e.to_string())?;
+    // UTF-8 BOM so Excel opens with correct encoding
+    file.write_all(b"\xef\xbb\xbf").map_err(|e| e.to_string())?;
+    file.write_all(csv_bytes).map_err(|e| e.to_string())?;
+    drop(file);
+
+    let path_str = path.to_string_lossy().into_owned();
+    app.opener()
+        .open_path(&path_str, None::<&str>)
+        .map_err(|e| e.to_string())?;
+
+    Ok(path_str)
+}
+
+/// POST /api/socios/export — fetch CSV for the given IDs, save to Downloads, open with system viewer.
+#[tauri::command]
+async fn export_socios(app: tauri::AppHandle, ids: Vec<i64>) -> Result<String, String> {
+    if ids.is_empty() {
+        return Err("Nenhum sócio selecionado".into());
+    }
+
+    let url = format!("{}/api/socios/export", base_url());
+    info!("[api] POST {} ({} ids)", url, ids.len());
+
+    let resp = api_client()
+        .post(&url)
+        .json(&serde_json::json!({ "ids": ids }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !resp.status().is_success() {
+        let text = resp.text().await.unwrap_or_default();
+        return Err(format!("Erro ao exportar: {text}"));
+    }
+
+    let csv_bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+    let path_str = save_csv_to_downloads(&app, &csv_bytes)?;
+    info!("[socios] exported {} socios → {}", ids.len(), path_str);
+    Ok(path_str)
+}
+
+/// GET /api/socios/export — fetch CSV for all socios matching the active filters.
+#[tauri::command]
+async fn export_all_socios(
+    app: tauri::AppHandle,
+    search: Option<String>,
+    state: Option<String>,
+    payment: Option<String>,
+    board_store: Option<String>,
+    utilization: Option<String>,
+    surf_lessons: Option<String>,
+) -> Result<String, String> {
+    let mut query: Vec<(&str, String)> = vec![];
+    if let Some(ref s) = search { if !s.is_empty() { query.push(("search", s.clone())); } }
+    if let Some(ref s) = state { if s != "all" { query.push(("state", s.clone())); } }
+    if let Some(ref p) = payment { if p != "all" { query.push(("payment", p.clone())); } }
+    if let Some(ref b) = board_store { if b != "all" { query.push(("board_store", b.clone())); } }
+    if let Some(ref u) = utilization { if u != "all" { query.push(("utilization", u.clone())); } }
+    if let Some(ref s) = surf_lessons { if s != "all" { query.push(("surf_lessons", s.clone())); } }
+
+    let client = api_client();
+    let req = client
+        .get(format!("{}/api/socios/export", base_url()))
+        .query(&query)
+        .build()
+        .map_err(|e| e.to_string())?;
+    info!("[api] GET {}", req.url());
+
+    let resp = client.execute(req).await.map_err(|e| e.to_string())?;
+
+    if !resp.status().is_success() {
+        let text = resp.text().await.unwrap_or_default();
+        return Err(format!("Erro ao exportar: {text}"));
+    }
+
+    let csv_bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+    let path_str = save_csv_to_downloads(&app, &csv_bytes)?;
+    info!("[socios] exported all socios → {}", path_str);
+    Ok(path_str)
+}
+
 // ── Config commands ───────────────────────────────────────────────────────────
 
 fn app_config_dir() -> Option<std::path::PathBuf> {
@@ -347,6 +442,8 @@ pub fn run() {
             get_socio,
             create_socio,
             update_socio,
+            export_socios,
+            export_all_socios,
             is_configured,
             save_config,
         ])

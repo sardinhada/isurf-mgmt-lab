@@ -87,10 +87,42 @@ export const Socios = () => {
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [exportError, setExportError] = useState(false);
+  const [exportSuccess, setExportSuccess] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
+  const [exportAllLoading, setExportAllLoading] = useState(false);
 
-  const handleExport = () => {
+  const handleExport = async () => {
     if (selectedIds.size === 0) { setExportError(true); return; }
-    // TODO: implement export
+    setExportLoading(true);
+    try {
+      await invoke('export_socios', { ids: Array.from(selectedIds) });
+      setExportSuccess(true);
+    } catch (e) {
+      console.error('[socios] export failed:', e);
+      alert(`Erro ao exportar:\n${e}`);
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
+  const handleExportAll = async () => {
+    setExportAllLoading(true);
+    try {
+      await invoke('export_all_socios', {
+        search: search.trim() || undefined,
+        state: filterStatus !== 'all' ? filterStatus : undefined,
+        payment: filterPayment !== 'all' ? filterPayment : undefined,
+        boardStore: filterGuardaria !== 'all' ? filterGuardaria : undefined,
+        utilization: filterUtilization !== 'all' ? filterUtilization : undefined,
+        surfLessons: filterSurfLessons !== 'all' ? filterSurfLessons : undefined,
+      });
+      setExportSuccess(true);
+    } catch (e) {
+      console.error('[socios] export all failed:', e);
+      alert(`Erro ao exportar:\n${e}`);
+    } finally {
+      setExportAllLoading(false);
+    }
   };
 
   const fetchSocios = useCallback(async () => {
@@ -214,10 +246,19 @@ export const Socios = () => {
         <Box sx={{ display: 'flex', gap: 1 }}>
           <Button
             variant="outlined"
-            startIcon={<FileDownloadIcon />}
-            onClick={handleExport}
+            startIcon={exportAllLoading ? <CircularProgress size={16} /> : <FileDownloadIcon />}
+            onClick={handleExportAll}
+            disabled={exportAllLoading || total === 0}
           >
-            Exportar{selectedIds.size > 0 ? ` (${selectedIds.size})` : ''}
+            {exportAllLoading ? 'A exportar…' : `Exportar Tudo (${total})`}
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={exportLoading ? <CircularProgress size={16} /> : <FileDownloadIcon />}
+            onClick={handleExport}
+            disabled={exportLoading}
+          >
+            {exportLoading ? 'A exportar…' : `Exportar${selectedIds.size > 0 ? ` (${selectedIds.size})` : ''}`}
           </Button>
           <Button
             variant="contained"
@@ -237,6 +278,17 @@ export const Socios = () => {
       >
         <Alert severity="warning" onClose={() => setExportError(false)} variant="filled">
           Precisas de pelo menos um sócio para exportar
+        </Alert>
+      </Snackbar>
+
+      <Snackbar
+        open={exportSuccess}
+        autoHideDuration={4000}
+        onClose={() => setExportSuccess(false)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert severity="success" onClose={() => setExportSuccess(false)} variant="filled">
+          Exportação concluída — ficheiro guardado nos Downloads
         </Alert>
       </Snackbar>
 
