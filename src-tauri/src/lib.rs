@@ -195,6 +195,7 @@ async fn create_socio(body: serde_json::Value) -> Result<serde_json::Value, Stri
         "nif":         body["nif"],
         "birth_date":  body["birth_date"],
         "postal_code": body["postal_code"],
+        "localidade":  body["localidade"],
         "observacoes": body["observacoes"],
     });
 

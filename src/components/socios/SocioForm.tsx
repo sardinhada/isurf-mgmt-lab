@@ -33,6 +33,7 @@ const DEFAULT_VALUES: SocioFormValues = {
   nif: '',
   birth_date: '',
   postal_code: '',
+  localidade: '',
   joined_at: today(),
   status: 'active',
   paid_until: currentYearEnd(),
@@ -194,15 +195,15 @@ export const SocioForm = ({
             )}
           </Stack>
 
+          <TextField
+            label="Endereço"
+            size="small"
+            value={values.address}
+            onChange={(e) => set('address', e.target.value)}
+            disabled={disabled}
+          />
+
           <Stack direction="row" spacing={2}>
-            <TextField
-              label="Endereço"
-              size="small"
-              value={values.address}
-              onChange={(e) => set('address', e.target.value)}
-              disabled={disabled}
-              sx={{ flex: 1 }}
-            />
             <TextField
               label="Código Postal"
               size="small"
@@ -210,6 +211,14 @@ export const SocioForm = ({
               onChange={(e) => set('postal_code', e.target.value)}
               disabled={disabled}
               sx={{ flex: 1 }}
+            />
+            <TextField
+              label="Localidade"
+              size="small"
+              value={values.localidade}
+              onChange={(e) => set('localidade', e.target.value)}
+              disabled={disabled}
+              sx={{ flex: 2 }}
             />
           </Stack>
 

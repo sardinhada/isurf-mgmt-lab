@@ -13,6 +13,7 @@ export interface Socio {
   nif: string | null;
   birth_date: string | null;
   postal_code: string | null;
+  localidade: string | null;
   // merged from socio_status (null when no status row exists)
   joined_at: string | null;
   status: SocioStatus | null;
@@ -58,6 +59,7 @@ export interface SocioFormValues {
   nif: string;
   birth_date: string;
   postal_code: string;
+  localidade: string;
   joined_at: string;
   status: SocioStatus;
   paid_until: string;
