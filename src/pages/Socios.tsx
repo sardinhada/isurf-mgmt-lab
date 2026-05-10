@@ -430,6 +430,7 @@ export const Socios = () => {
                       }}
                     />
                   </TableCell>
+                  <TableCell>Adms ID</TableCell>
                   <TableCell>Nome</TableCell>
                   <TableCell>Email</TableCell>
                   <TableCell>Telefone</TableCell>
@@ -445,7 +446,7 @@ export const Socios = () => {
                 {socios.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={8}
+                      colSpan={9}
                       align="center"
                       sx={{ py: 6, color: 'text.secondary' }}
                     >
@@ -469,6 +470,7 @@ export const Socios = () => {
                           }}
                         />
                       </TableCell>
+                      <TableCell>{s.adms_id ?? '—'}</TableCell>
                       <TableCell>{s.name}</TableCell>
                       <TableCell>{s.email}</TableCell>
                       <TableCell>{s.phone ?? '—'}</TableCell>
