@@ -26,6 +26,7 @@ import {
   TableHead,
   TablePagination,
   TableRow,
+  TableSortLabel,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
@@ -86,6 +87,7 @@ export const Socios = () => {
   const [filterSurfLessons, setFilterSurfLessons] = useState<'all' | 'yes' | 'no'>('all');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc' | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [exportError, setExportError] = useState(false);
   const [exportSuccess, setExportSuccess] = useState(false);
@@ -140,6 +142,8 @@ export const Socios = () => {
           boardStore: filterGuardaria !== 'all' ? filterGuardaria : undefined,
           utilization: filterUtilization !== 'all' ? filterUtilization : undefined,
           surfLessons: filterSurfLessons !== 'all' ? filterSurfLessons : undefined,
+          sort: sortOrder ? 'adms_id' : undefined,
+          order: sortOrder ?? undefined,
         },
       );
       setSocios(result.data.socios);
@@ -149,7 +153,7 @@ export const Socios = () => {
     } finally {
       setLoading(false);
     }
-  }, [page, rowsPerPage, search, filterStatus, filterPayment, filterGuardaria, filterUtilization, filterSurfLessons]);
+  }, [page, rowsPerPage, search, filterStatus, filterPayment, filterGuardaria, filterUtilization, filterSurfLessons, sortOrder]);
 
   useEffect(() => {
     fetchSocios();
@@ -430,7 +434,22 @@ export const Socios = () => {
                       }}
                     />
                   </TableCell>
-                  <TableCell>Adms ID</TableCell>
+                  <TableCell sortDirection={sortOrder ?? false}>
+                    <TableSortLabel
+                      active={sortOrder !== null}
+                      direction={sortOrder ?? 'asc'}
+                      onClick={() => {
+                        setSortOrder(prev => {
+                          if (prev === null) return 'asc';
+                          if (prev === 'asc') return 'desc';
+                          return null;
+                        });
+                        setPage(0);
+                      }}
+                    >
+                      Adms ID
+                    </TableSortLabel>
+                  </TableCell>
                   <TableCell>Nome</TableCell>
                   <TableCell>Email</TableCell>
                   <TableCell>Telefone</TableCell>

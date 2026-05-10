@@ -116,6 +116,8 @@ async fn list_socios(
     board_store: Option<String>,
     utilization: Option<String>,
     surf_lessons: Option<String>,
+    sort: Option<String>,
+    order: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let mut query: Vec<(&str, String)> = vec![];
 
@@ -127,6 +129,8 @@ async fn list_socios(
     if let Some(ref b) = board_store { query.push(("board_store", b.clone())); }
     if let Some(ref u) = utilization { query.push(("utilization", u.clone())); }
     if let Some(ref s) = surf_lessons { query.push(("surf_lessons", s.clone())); }
+    if let Some(ref s) = sort { query.push(("sort", s.clone())); }
+    if let Some(ref o) = order { query.push(("order", o.clone())); }
 
     let client = api_client();
     let req = client
