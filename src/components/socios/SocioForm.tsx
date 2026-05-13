@@ -50,6 +50,7 @@ interface Props {
   initialValues?: Partial<SocioFormValues>;
   onSubmit: (values: SocioFormValues) => void;
   onCancel: () => void;
+  onError?: (message: string) => void;
   submitLabel?: string;
   disabled?: boolean;
 }
@@ -60,6 +61,7 @@ export const SocioForm = ({
   initialValues,
   onSubmit,
   onCancel,
+  onError,
   submitLabel = 'Guardar',
   disabled = false,
 }: Props) => {
@@ -306,6 +308,7 @@ export const SocioForm = ({
               partnerId={partnerId}
               product="surf_lessons"
               label="Pagamentos — Formação"
+              onError={onError}
             />
           )}
 
@@ -327,6 +330,7 @@ export const SocioForm = ({
               partnerId={partnerId}
               product="board_store"
               label="Pagamentos — Guardaria"
+              onError={onError}
             />
           )}
 
@@ -346,6 +350,7 @@ export const SocioForm = ({
               partnerId={partnerId}
               product="utilization"
               label="Pagamentos — Utilização"
+              onError={onError}
             />
           )}
         </Stack>

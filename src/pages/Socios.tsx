@@ -93,6 +93,7 @@ export const Socios = () => {
   const [exportSuccess, setExportSuccess] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
   const [exportAllLoading, setExportAllLoading] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
 
   const handleExport = async () => {
     if (selectedIds.size === 0) { setExportError(true); return; }
@@ -102,7 +103,7 @@ export const Socios = () => {
       setExportSuccess(true);
     } catch (e) {
       console.error('[socios] export failed:', e);
-      alert(`Erro ao exportar:\n${e}`);
+      setApiError(String(e));
     } finally {
       setExportLoading(false);
     }
@@ -122,7 +123,7 @@ export const Socios = () => {
       setExportSuccess(true);
     } catch (e) {
       console.error('[socios] export all failed:', e);
-      alert(`Erro ao exportar:\n${e}`);
+      setApiError(String(e));
     } finally {
       setExportAllLoading(false);
     }
@@ -150,6 +151,7 @@ export const Socios = () => {
       setTotal(result.data.total);
     } catch (e) {
       console.error('[socios] fetch failed:', e);
+      setApiError(String(e));
     } finally {
       setLoading(false);
     }
@@ -194,7 +196,7 @@ export const Socios = () => {
       await fetchSocios();
     } catch (e) {
       console.error('[socios] create failed:', e);
-      alert(`Erro ao criar sócio:\n${e}`);
+      setApiError(String(e));
     } finally {
       setSaving(false);
     }
@@ -230,7 +232,7 @@ export const Socios = () => {
       await fetchSocios();
     } catch (e) {
       console.error('[socios] update failed:', e);
-      alert(`Erro ao guardar sócio:\n${e}`);
+      setApiError(String(e));
     } finally {
       setSaving(false);
     }
@@ -296,6 +298,17 @@ export const Socios = () => {
       >
         <Alert severity="success" onClose={() => setExportSuccess(false)} variant="filled">
           Exportação concluída — ficheiro guardado nos Downloads
+        </Alert>
+      </Snackbar>
+
+      <Snackbar
+        open={apiError !== null}
+        autoHideDuration={6000}
+        onClose={() => setApiError(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert severity="error" onClose={() => setApiError(null)} variant="filled">
+          {apiError}
         </Alert>
       </Snackbar>
 
@@ -579,6 +592,7 @@ export const Socios = () => {
               initialValues={socioToFormValues(dialog.socio)}
               onSubmit={handleEdit}
               onCancel={() => setDialog(null)}
+              onError={setApiError}
               submitLabel={saving ? 'A guardar…' : 'Guardar'}
               disabled={saving}
             />
@@ -586,6 +600,7 @@ export const Socios = () => {
             <SocioForm
               onSubmit={handleCreate}
               onCancel={() => setDialog(null)}
+              onError={setApiError}
               submitLabel={saving ? 'A guardar…' : 'Criar Sócio'}
               disabled={saving}
             />

@@ -11,9 +11,10 @@ interface Props {
   partnerId: number;
   product: MonthlyPaymentProduct;
   label: string;
+  onError?: (message: string) => void;
 }
 
-export const MonthlyPaymentsEditor = ({ partnerId, product, label }: Props) => {
+export const MonthlyPaymentsEditor = ({ partnerId, product, label, onError }: Props) => {
   const [year, setYear] = useState(new Date().getFullYear());
   const [paid, setPaid] = useState<boolean[]>(Array(12).fill(false));
   const [loading, setLoading] = useState(true);
@@ -31,6 +32,8 @@ export const MonthlyPaymentsEditor = ({ partnerId, product, label }: Props) => {
         }
       }
       setPaid(arr);
+    } catch (e) {
+      onError?.(String(e));
     } finally {
       setLoading(false);
     }
@@ -56,6 +59,8 @@ export const MonthlyPaymentsEditor = ({ partnerId, product, label }: Props) => {
         next[monthIndex] = newPaid;
         return next;
       });
+    } catch (e) {
+      onError?.(String(e));
     } finally {
       setToggling(null);
     }

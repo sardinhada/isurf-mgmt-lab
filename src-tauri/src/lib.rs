@@ -81,7 +81,34 @@ async fn get_sea_forecast() -> Result<SeaForecast, String> {
 // ── Socios API ────────────────────────────────────────────────────────────────
 
 fn api_client() -> reqwest::Client {
-    reqwest::Client::new()
+    let mut headers = reqwest::header::HeaderMap::new();
+    if let Ok(key_path) = std::env::var("API_KEY") {
+        if let Ok(key) = std::fs::read_to_string(&key_path) {
+            let key = key.trim().to_string();
+            if !key.is_empty() {
+                if let Ok(val) = reqwest::header::HeaderValue::from_str(&key) {
+                    headers.insert("x-api-key", val);
+                } else {
+                    warn!("[config] API_KEY file contains an invalid header value");
+                }
+            }
+        } else {
+            warn!("[config] could not read API_KEY file: {}", key_path);
+        }
+    }
+    reqwest::Client::builder()
+        .default_headers(headers)
+        .build()
+        .expect("failed to build HTTP client")
+}
+
+fn extract_api_error(text: String) -> String {
+    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
+        if let Some(msg) = json["message"].as_str() {
+            return msg.to_string();
+        }
+    }
+    if text.is_empty() { "erro desconhecido".to_string() } else { text }
 }
 
 /// Returns the configured API base URL (host:port) for display purposes.
@@ -139,13 +166,12 @@ async fn list_socios(
         .build()
         .map_err(|e| e.to_string())?;
     info!("[api] GET {}", req.url());
-    client
-        .execute(req)
-        .await
-        .map_err(|e| e.to_string())?
-        .json::<serde_json::Value>()
-        .await
-        .map_err(|e| e.to_string())
+    let resp = client.execute(req).await.map_err(|e| e.to_string())?;
+    if !resp.status().is_success() {
+        let text = resp.text().await.unwrap_or_default();
+        return Err(format!("Erro ao carregar sócios: {}", extract_api_error(text)));
+    }
+    resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
 }
 
 /// GET /api/socios/stats — socio counts.
@@ -153,14 +179,12 @@ async fn list_socios(
 async fn get_socios_stats() -> Result<serde_json::Value, String> {
     let url = format!("{}/api/socios/stats", base_url());
     info!("[api] GET {}", url);
-    api_client()
-        .get(url)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?
-        .json::<serde_json::Value>()
-        .await
-        .map_err(|e| e.to_string())
+    let resp = api_client().get(url).send().await.map_err(|e| e.to_string())?;
+    if !resp.status().is_success() {
+        let text = resp.text().await.unwrap_or_default();
+        return Err(extract_api_error(text));
+    }
+    resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
 }
 
 /// GET /api/socios/:id — single socio with status and monthly payments.
@@ -178,7 +202,8 @@ async fn get_socio(id: i64) -> Result<serde_json::Value, String> {
         return Err("Sócio não encontrado".into());
     }
     if !resp.status().is_success() {
-        return Err(format!("Erro ao obter sócio: {}", resp.status()));
+        let text = resp.text().await.unwrap_or_default();
+        return Err(format!("Erro ao obter sócio: {}", extract_api_error(text)));
     }
 
     resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
@@ -216,9 +241,8 @@ async fn create_socio(body: serde_json::Value) -> Result<serde_json::Value, Stri
         return Err("Email já registado".into());
     }
     if !create_resp.status().is_success() {
-        let status = create_resp.status();
         let text = create_resp.text().await.unwrap_or_default();
-        return Err(format!("Erro ao criar sócio ({status}): {text}"));
+        return Err(format!("Erro ao criar sócio: {}", extract_api_error(text)));
     }
 
     let created: serde_json::Value = create_resp.json().await.map_err(|e| e.to_string())?;
@@ -246,9 +270,8 @@ async fn create_socio(body: serde_json::Value) -> Result<serde_json::Value, Stri
         .map_err(|e| e.to_string())?;
 
     if !patch_resp.status().is_success() {
-        let status = patch_resp.status();
         let text = patch_resp.text().await.unwrap_or_default();
-        return Err(format!("Sócio criado mas erro ao definir estado ({status}): {text}"));
+        return Err(format!("Sócio criado mas erro ao definir estado: {}", extract_api_error(text)));
     }
 
     info!("[socios] created socio id={id}");
@@ -272,12 +295,11 @@ async fn update_socio(id: i64, body: serde_json::Value) -> Result<serde_json::Va
     }
     if resp.status().as_u16() == 422 {
         let text = resp.text().await.unwrap_or_default();
-        return Err(format!("Pedido inválido: {text}"));
+        return Err(format!("Pedido inválido: {}", extract_api_error(text)));
     }
     if !resp.status().is_success() {
-        let status = resp.status();
         let text = resp.text().await.unwrap_or_default();
-        return Err(format!("Erro ao atualizar sócio ({status}): {text}"));
+        return Err(format!("Erro ao atualizar sócio: {}", extract_api_error(text)));
     }
 
     info!("[socios] updated socio id={id}");
@@ -329,7 +351,7 @@ async fn export_socios(app: tauri::AppHandle, ids: Vec<i64>) -> Result<String, S
 
     if !resp.status().is_success() {
         let text = resp.text().await.unwrap_or_default();
-        return Err(format!("Erro ao exportar: {text}"));
+        return Err(format!("Erro ao exportar: {}", extract_api_error(text)));
     }
 
     let csv_bytes = resp.bytes().await.map_err(|e| e.to_string())?;
@@ -369,7 +391,7 @@ async fn export_all_socios(
 
     if !resp.status().is_success() {
         let text = resp.text().await.unwrap_or_default();
-        return Err(format!("Erro ao exportar: {text}"));
+        return Err(format!("Erro ao exportar: {}", extract_api_error(text)));
     }
 
     let csv_bytes = resp.bytes().await.map_err(|e| e.to_string())?;
@@ -397,7 +419,11 @@ fn is_configured() -> bool {
 fn save_config(host: String, port: String) -> Result<(), String> {
     let dir = app_config_dir().ok_or("Não foi possível determinar o diretório de configuração")?;
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let content = format!("API_HOST={}\nAPI_PORT={}\n", host, port);
+    // Preserve API_KEY if already set
+    let api_key_line = std::env::var("API_KEY")
+        .map(|v| format!("API_KEY={}\n", v))
+        .unwrap_or_default();
+    let content = format!("API_HOST={}\nAPI_PORT={}\n{}", host, port, api_key_line);
     std::fs::write(dir.join(".env"), &content).map_err(|e| e.to_string())?;
     std::env::set_var("API_HOST", &host);
     std::env::set_var("API_PORT", &port);

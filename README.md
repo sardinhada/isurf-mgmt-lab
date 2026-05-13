@@ -84,12 +84,16 @@ The app reads its config from a `.env` file in the user's config directory.
 |---|---|---|
 | `API_HOST` | `localhost` | Hostname or IP of the backend API |
 | `API_PORT` | `3000` | Port of the backend API |
+| `API_KEY` | _(none)_ | Path to a file containing the `x-api-key` secret sent with every API request |
+
+`API_KEY` must point to a **file** whose contents are the key value (one line, no quotes). The file is read at request time; the key is never written to disk by the app.
 
 ### Example
 
 ```env
 API_HOST=192.168.1.66
 API_PORT=3000
+API_KEY=/home/wind/.local/share/isurfapi/api_key
 ```
 
 ## Logs
