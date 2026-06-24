@@ -44,6 +44,7 @@ export interface SocioDetail {
     utilization: boolean;
     surf_lessons: boolean;
     monthly_payments: MonthlyPayment[];
+    annual_payments: number[];
   } | null;
 }
 

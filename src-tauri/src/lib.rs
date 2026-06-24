@@ -111,6 +111,26 @@ fn extract_api_error(text: String) -> String {
     if text.is_empty() { "erro desconhecido".to_string() } else { text }
 }
 
+/// Checks whether the API key is present and usable.
+/// Returns one of: "ok" | "env_not_set" | "file_not_found" | "empty" | "invalid"
+#[tauri::command]
+fn check_api_key() -> String {
+    let Ok(key_path) = std::env::var("API_KEY") else {
+        return "env_not_set".into();
+    };
+    let Ok(contents) = std::fs::read_to_string(&key_path) else {
+        return "file_not_found".into();
+    };
+    let key = contents.trim();
+    if key.is_empty() {
+        return "empty".into();
+    }
+    if reqwest::header::HeaderValue::from_str(key).is_err() {
+        return "invalid".into();
+    }
+    "ok".into()
+}
+
 /// Returns the configured API base URL (host:port) for display purposes.
 #[tauri::command]
 fn get_api_base() -> String {
@@ -218,6 +238,7 @@ async fn create_socio(body: serde_json::Value) -> Result<serde_json::Value, Stri
     let socio_body = serde_json::json!({
         "name":        body["name"],
         "email":       body["email"],
+        "adms_id":     body["adms_id"],
         "phone":       body["phone"],
         "address":     body["address"],
         "ncc":         body["ncc"],
@@ -304,6 +325,70 @@ async fn update_socio(id: i64, body: serde_json::Value) -> Result<serde_json::Va
 
     info!("[socios] updated socio id={id}");
     resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+}
+
+/// POST /api/socios/:id/annual-payments — toggle a paid year; returns updated list of paid years.
+#[tauri::command]
+async fn toggle_annual_payment(id: i64, year: i32) -> Result<serde_json::Value, String> {
+    let url = format!("{}/api/socios/{}/annual-payments", base_url(), id);
+    info!("[api] POST {} (year={})", url, year);
+    let resp = api_client()
+        .post(url)
+        .json(&serde_json::json!({ "year": year }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if resp.status() == reqwest::StatusCode::NOT_FOUND {
+        return Err("Sócio não encontrado".into());
+    }
+    if !resp.status().is_success() {
+        let text = resp.text().await.unwrap_or_default();
+        return Err(format!("Erro ao atualizar pagamento anual: {}", extract_api_error(text)));
+    }
+
+    info!("[socios] toggled annual payment id={id} year={year}");
+    resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+}
+
+/// GET /api/socios/adms-id/:adms_id — find a socio by adms_id for collision detection.
+/// Returns {id, name} of the existing socio, or null if the adms_id is free.
+#[tauri::command]
+async fn find_socio_by_adms_id(adms_id: i32) -> Result<Option<serde_json::Value>, String> {
+    let url = format!("{}/api/socios/adms-id/{}", base_url(), adms_id);
+    info!("[api] GET {}", url);
+    let resp = api_client().get(url).send().await.map_err(|e| e.to_string())?;
+    if resp.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+    if !resp.status().is_success() {
+        return Ok(None);
+    }
+    let val: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    Ok(Some(val))
+}
+
+/// DELETE /api/socios/:id — permanently removes a socio and all related records.
+#[tauri::command]
+async fn delete_socio(id: i64) -> Result<(), String> {
+    let url = format!("{}/api/socios/{}", base_url(), id);
+    info!("[api] DELETE {}", url);
+    let resp = api_client()
+        .delete(url)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if resp.status() == reqwest::StatusCode::NOT_FOUND {
+        return Err("Sócio não encontrado".into());
+    }
+    if !resp.status().is_success() {
+        let text = resp.text().await.unwrap_or_default();
+        return Err(format!("Erro ao eliminar sócio: {}", extract_api_error(text)));
+    }
+
+    info!("[socios] deleted socio id={id}");
+    Ok(())
 }
 
 fn save_csv_to_downloads(app: &tauri::AppHandle, csv_bytes: &[u8]) -> Result<String, String> {
@@ -475,6 +560,10 @@ pub fn run() {
             update_socio,
             export_socios,
             export_all_socios,
+            delete_socio,
+            find_socio_by_adms_id,
+            toggle_annual_payment,
+            check_api_key,
             is_configured,
             save_config,
         ])

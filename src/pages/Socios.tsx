@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import AddIcon from '@mui/icons-material/Add';
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import CloseIcon from '@mui/icons-material/Close';
+import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
+import HighlightOffIcon from '@mui/icons-material/HighlightOff';
 import SearchIcon from '@mui/icons-material/Search';
 import {
   Alert,
@@ -13,7 +16,9 @@ import {
   Chip,
   CircularProgress,
   Dialog,
+  DialogActions,
   DialogContent,
+  DialogContentText,
   DialogTitle,
   IconButton,
   InputAdornment,
@@ -30,6 +35,7 @@ import {
   TextField,
   ToggleButton,
   ToggleButtonGroup,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import { SocioForm } from '../components/socios/SocioForm';
@@ -94,6 +100,9 @@ export const Socios = () => {
   const [exportLoading, setExportLoading] = useState(false);
   const [exportAllLoading, setExportAllLoading] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Socio | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [toggleLoading, setToggleLoading] = useState<number | null>(null);
 
   const handleExport = async () => {
     if (selectedIds.size === 0) { setExportError(true); return; }
@@ -212,6 +221,7 @@ export const Socios = () => {
         body: {
           name: values.name,
           email: values.email,
+          adms_id: values.adms_id ? Number(values.adms_id) : null,
           phone: values.phone || null,
           address: values.address || null,
           observacoes: values.observacoes || null,
@@ -222,7 +232,6 @@ export const Socios = () => {
           localidade: values.localidade || null,
           joined_at: values.joined_at || null,
           status: values.status,
-          paid_until: values.paid_until || null,
           board_store: values.board_store,
           utilization: values.utilization,
           surf_lessons: values.surf_lessons,
@@ -235,6 +244,42 @@ export const Socios = () => {
       setApiError(String(e));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleToggleStatus = async (socio: Socio) => {
+    if (!socio.status || socio.status === 'suspended') return;
+    const newStatus = socio.status === 'active' ? 'inactive' : 'active';
+    setToggleLoading(socio.id);
+    try {
+      await invoke('update_socio', { id: socio.id, body: { status: newStatus } });
+      await fetchSocios();
+    } catch (e) {
+      console.error('[socios] toggle status failed:', e);
+      setApiError(String(e));
+    } finally {
+      setToggleLoading(null);
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
+    setDeleteLoading(true);
+    try {
+      await invoke('delete_socio', { id: deleteTarget.id });
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(deleteTarget.id);
+        return next;
+      });
+      setDeleteTarget(null);
+      await fetchSocios();
+    } catch (e) {
+      console.error('[socios] delete failed:', e);
+      setApiError(String(e));
+      setDeleteTarget(null);
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -478,7 +523,7 @@ export const Socios = () => {
                 {socios.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={9}
+                      colSpan={10}
                       align="center"
                       sx={{ py: 6, color: 'text.secondary' }}
                     >
@@ -535,13 +580,36 @@ export const Socios = () => {
                           {!s.board_store && !s.utilization && !s.surf_lessons ? <span style={{ color: 'var(--mui-palette-text-disabled)' }}>—</span> : null}
                         </Box>
                       </TableCell>
-                      <TableCell align="right" sx={{ pr: 1 }}>
-                        <IconButton
-                          size="small"
-                          onClick={() => setDialog({ mode: 'edit', socio: s })}
-                        >
-                          <EditIcon fontSize="small" />
-                        </IconButton>
+                      <TableCell align="right" sx={{ pr: 1, whiteSpace: 'nowrap' }}>
+                        {s.status && s.status !== 'suspended' && (
+                          <Tooltip title={s.status === 'active' ? 'Desativar' : 'Ativar'}>
+                            <span>
+                              <IconButton
+                                size="small"
+                                onClick={() => handleToggleStatus(s)}
+                                disabled={toggleLoading === s.id}
+                              >
+                                {toggleLoading === s.id ? (
+                                  <CircularProgress size={16} />
+                                ) : s.status === 'active' ? (
+                                  <HighlightOffIcon fontSize="small" color="disabled" />
+                                ) : (
+                                  <CheckCircleOutlineIcon fontSize="small" color="success" />
+                                )}
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                        )}
+                        <Tooltip title="Editar">
+                          <IconButton size="small" onClick={() => setDialog({ mode: 'edit', socio: s })}>
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Eliminar">
+                          <IconButton size="small" color="error" onClick={() => setDeleteTarget(s)}>
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
                       </TableCell>
                     </TableRow>
                   ))
@@ -566,6 +634,30 @@ export const Socios = () => {
           />
         </Paper>
       )}
+
+      {/* ── Delete Confirmation Dialog ────────────────────────── */}
+      <Dialog
+        open={deleteTarget !== null}
+        onClose={() => !deleteLoading && setDeleteTarget(null)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Eliminar Sócio</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Tens a certeza que queres eliminar <strong>{deleteTarget?.name}</strong>? Esta ação é
+            irreversível e remove todos os dados associados (estado, pagamentos mensais).
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteTarget(null)} disabled={deleteLoading}>
+            Cancelar
+          </Button>
+          <Button onClick={handleDeleteConfirm} color="error" variant="contained" disabled={deleteLoading}>
+            {deleteLoading ? 'A eliminar…' : 'Eliminar'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* ── Create / Edit Dialog ──────────────────────────────── */}
       <Dialog

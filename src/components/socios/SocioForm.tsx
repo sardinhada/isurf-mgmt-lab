@@ -1,4 +1,7 @@
 import { useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import type { SelectChangeEvent } from '@mui/material';
 import {
   Box,
@@ -8,6 +11,7 @@ import {
   FormControl,
   FormControlLabel,
   FormHelperText,
+  IconButton,
   InputLabel,
   MenuItem,
   Select,
@@ -16,12 +20,18 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import { AnnualPaymentsEditor } from './AnnualPaymentsEditor';
 import { MonthlyPaymentsEditor } from './MonthlyPaymentsEditor';
 import type { SocioFormValues, SocioStatus } from '../../types/socio';
 
 const today = () => new Date().toISOString().split('T')[0];
 const currentYearEnd = () => `${new Date().getFullYear()}-12-31`;
-const YEAR_OPTIONS = Array.from({ length: 8 }, (_, i) => new Date().getFullYear() - 5 + i);
+
+const BATCH_SIZE = 15;
+const BATCH_START = 2013;
+const BATCH_COUNT = 5;
+const batchYears = (batch: number) =>
+  Array.from({ length: BATCH_SIZE }, (_, i) => BATCH_START + batch * BATCH_SIZE + i);
 const DEFAULT_VALUES: SocioFormValues = {
   name: '',
   email: '',
@@ -70,6 +80,29 @@ export const SocioForm = ({
     ...initialValues,
   });
   const [errors, setErrors] = useState<FormErrors>({});
+  const [admsIdWarning, setAdmsIdWarning] = useState<string | null>(null);
+  const [paidUntilBatch, setPaidUntilBatch] = useState(0);
+
+  const handleAdmsIdBlur = async () => {
+    const num = Number(values.adms_id);
+    if (!values.adms_id || !Number.isInteger(num) || num <= 0) {
+      setAdmsIdWarning(null);
+      return;
+    }
+    try {
+      const result = await invoke<{ id: number; name: string } | null>(
+        'find_socio_by_adms_id',
+        { admsId: num },
+      );
+      if (result && result.id !== partnerId) {
+        setAdmsIdWarning(result.name);
+      } else {
+        setAdmsIdWarning(null);
+      }
+    } catch {
+      setAdmsIdWarning(null);
+    }
+  };
 
   const set = <K extends keyof SocioFormValues>(key: K, value: SocioFormValues[K]) => {
     setValues((prev) => ({ ...prev, [key]: value }));
@@ -82,7 +115,7 @@ export const SocioForm = ({
     if (!values.email.trim()) e.email = 'Email é obrigatório';
     else if (!/\S+@\S+\.\S+/.test(values.email)) e.email = 'Email inválido';
     if (!values.joined_at) e.joined_at = 'Obrigatório';
-    if (!values.paid_until) e.paid_until = 'Obrigatório';
+    if (!partnerId && !values.paid_until) e.paid_until = 'Obrigatório';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -184,18 +217,23 @@ export const SocioForm = ({
               disabled={disabled}
               sx={{ flex: 1 }}
             />
-            {!partnerId && (
-              <TextField
-                label="Nº ADMS"
-                size="small"
-                type="number"
-                value={values.adms_id}
-                onChange={(e) => set('adms_id', e.target.value)}
-                disabled={disabled}
-                sx={{ flex: 1 }}
-              />
-            )}
+            <TextField
+              label="Nº ADMS"
+              size="small"
+              type="number"
+              value={values.adms_id}
+              onChange={(e) => { set('adms_id', e.target.value); setAdmsIdWarning(null); }}
+              onBlur={handleAdmsIdBlur}
+              disabled={disabled}
+              sx={{ flex: 1 }}
+            />
           </Stack>
+
+          {admsIdWarning && (
+            <FormHelperText sx={{ color: 'warning.main', mx: 0.25 }}>
+              ⚠ Nº ADMS já atribuído a <strong>{admsIdWarning}</strong> — podes continuar mesmo assim.
+            </FormHelperText>
+          )}
 
           <TextField
             label="Endereço"
@@ -277,20 +315,54 @@ export const SocioForm = ({
             />
           </Stack>
 
-          <FormControl size="small" required error={!!errors.paid_until} disabled={disabled}>
-            <InputLabel shrink>Pago Até (Ano)</InputLabel>
-            <Select
-              value={values.paid_until ? values.paid_until.substring(0, 4) : ''}
-              onChange={(e) => set('paid_until', `${e.target.value}-12-31`)}
-              label="Pago Até (Ano)"
-              notched
-            >
-              {YEAR_OPTIONS.map((y) => (
-                <MenuItem key={y} value={String(y)}>{y}</MenuItem>
-              ))}
-            </Select>
-            {errors.paid_until && <FormHelperText>{errors.paid_until}</FormHelperText>}
-          </FormControl>
+          {partnerId ? (
+            <AnnualPaymentsEditor partnerId={partnerId} onError={onError} />
+          ) : (
+            <Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.75 }}>
+                <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>
+                  Pago Até (Ano) *
+                </Typography>
+                <IconButton
+                  size="small"
+                  onClick={() => setPaidUntilBatch((b) => b - 1)}
+                  disabled={paidUntilBatch === 0 || disabled}
+                >
+                  <ChevronLeftIcon fontSize="small" />
+                </IconButton>
+                <Typography variant="caption" sx={{ minWidth: 90, textAlign: 'center' }}>
+                  {BATCH_START + paidUntilBatch * BATCH_SIZE} – {BATCH_START + paidUntilBatch * BATCH_SIZE + BATCH_SIZE - 1}
+                </Typography>
+                <IconButton
+                  size="small"
+                  onClick={() => setPaidUntilBatch((b) => b + 1)}
+                  disabled={paidUntilBatch === BATCH_COUNT - 1 || disabled}
+                >
+                  <ChevronRightIcon fontSize="small" />
+                </IconButton>
+              </Box>
+
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                {batchYears(paidUntilBatch).map((year) => {
+                  const selected = values.paid_until?.startsWith(String(year));
+                  return (
+                    <Chip
+                      key={year}
+                      label={year}
+                      size="small"
+                      color={selected ? 'success' : 'default'}
+                      onClick={() => set('paid_until', selected ? '' : `${year}-12-31`)}
+                      disabled={disabled}
+                    />
+                  );
+                })}
+              </Box>
+
+              {errors.paid_until && (
+                <FormHelperText error sx={{ mt: 0.5 }}>{errors.paid_until}</FormHelperText>
+              )}
+            </Box>
+          )}
 
           <FormControlLabel
             control={

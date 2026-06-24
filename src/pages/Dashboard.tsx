@@ -101,6 +101,14 @@ const SocioStatsCard = () => {
 };
 
 type ApiStatus = 'operational' | 'down' | 'checking';
+type ApiKeyStatus = 'ok' | 'env_not_set' | 'file_not_found' | 'empty' | 'invalid';
+
+const KEY_WARNING: Record<Exclude<ApiKeyStatus, 'ok'>, string> = {
+  env_not_set:   'A variável de ambiente API_KEY não está definida — os pedidos serão rejeitados pelo servidor.',
+  file_not_found: 'O ficheiro de API key não foi encontrado. Verifica o caminho configurado em API_KEY.',
+  empty:         'O ficheiro de API key está vazio — os pedidos serão rejeitados pelo servidor.',
+  invalid:       'A API key contém caracteres inválidos e não será enviada nos pedidos.',
+};
 
 const statusColor = (s: ApiStatus) =>
   s === 'operational' ? 'success' : s === 'checking' ? 'default' : 'error';
@@ -111,9 +119,11 @@ const statusLabel = (s: ApiStatus) =>
 const ApiStatusCard = () => {
   const [status, setStatus] = useState<ApiStatus>('checking');
   const [apiBase, setApiBase] = useState('localhost:3000');
+  const [keyStatus, setKeyStatus] = useState<ApiKeyStatus>('ok');
 
   useEffect(() => {
     invoke<string>('get_api_base').then(setApiBase).catch(() => {});
+    invoke<ApiKeyStatus>('check_api_key').then(setKeyStatus).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -141,6 +151,12 @@ const ApiStatusCard = () => {
             Estado do Servidor
           </Typography>
         </Box>
+
+        {keyStatus !== 'ok' && (
+          <Alert severity="error" variant="outlined" sx={{ mb: 2, borderRadius: 2 }}>
+            <strong>API key em falta ou inválida</strong> — {KEY_WARNING[keyStatus]}
+          </Alert>
+        )}
 
         {degraded && status !== 'checking' && (
           <Alert severity="warning" variant="outlined" sx={{ mb: 2, borderRadius: 2 }}>
