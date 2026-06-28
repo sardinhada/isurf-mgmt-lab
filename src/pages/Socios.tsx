@@ -93,7 +93,7 @@ export const Socios = () => {
   const [filterSurfLessons, setFilterSurfLessons] = useState<'all' | 'yes' | 'no'>('all');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc' | null>(null);
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc' | null>('asc');
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [exportError, setExportError] = useState(false);
   const [exportSuccess, setExportSuccess] = useState(false);
@@ -156,15 +156,7 @@ export const Socios = () => {
           order: sortOrder ?? undefined,
         },
       );
-      let socios = result.data.socios;
-      if (sortOrder) {
-        socios = [...socios].sort((a, b) => {
-          const av = a.adms_id ?? Infinity;
-          const bv = b.adms_id ?? Infinity;
-          return sortOrder === 'asc' ? av - bv : bv - av;
-        });
-      }
-      setSocios(socios);
+      setSocios(result.data.socios);
       setTotal(result.data.total);
     } catch (e) {
       console.error('[socios] fetch failed:', e);
