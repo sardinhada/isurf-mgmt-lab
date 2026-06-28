@@ -156,7 +156,15 @@ export const Socios = () => {
           order: sortOrder ?? undefined,
         },
       );
-      setSocios(result.data.socios);
+      let socios = result.data.socios;
+      if (sortOrder) {
+        socios = [...socios].sort((a, b) => {
+          const av = a.adms_id ?? Infinity;
+          const bv = b.adms_id ?? Infinity;
+          return sortOrder === 'asc' ? av - bv : bv - av;
+        });
+      }
+      setSocios(socios);
       setTotal(result.data.total);
     } catch (e) {
       console.error('[socios] fetch failed:', e);
